@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gig Monkey</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Bebas+Neue&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="dashboard">
+    <div class="backdrop"></div>
+    <div class="noise"></div>
+
+    <header class="hero">
+      <div class="hero-copy">
+        <nav class="top-nav" aria-label="Primary">
+          <a href="./index.html" class="is-current">Dashboard</a>
+          <a href="./setlists.html">Setlists</a>
+        </nav>
+        <p class="eyebrow">Band Toolkit</p>
+        <h1>Gig Monkey</h1>
+      </div>
+
+      <div class="hero-card">
+        <p class="hero-label">Tonight's Snapshot</p>
+        <ul>
+          <li>Setlists for every show</li>
+          <li>Practice dates and reminders</li>
+          <li>Gig notes for venues and staff</li>
+          <li>Drag-and-drop stage plots</li>
+        </ul>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="panel span-2">
+        <div class="panel-heading">
+          <div>
+            <p class="section-tag">Default Setlist</p>
+            <h2>Main page show-ready view</h2>
+          </div>
+          <div class="action-row">
+            <a href="./setlists.html" class="panel-link">Manage</a>
+            <button id="dashboard-print-setlist" type="button" class="ghost-button">
+              Print
+            </button>
+          </div>
+        </div>
+
+        <div id="dashboard-default-setlist" class="selected-card empty-state">
+          <p>No default setlist yet. Create one on the setlists page.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-tag">Gig Notes</p>
+            <h2>Never forget the details</h2>
+          </div>
+        </div>
+
+        <form id="gig-note-form" class="stack-form">
+          <label>
+            Venue or event
+            <input
+              type="text"
+              name="title"
+              placeholder="The Echo Room"
+              required
+            />
+          </label>
+          <label>
+            Notes
+            <textarea
+              name="details"
+              rows="5"
+              placeholder="Load-in at back door. Ask for Chris. Merch table fits by the bar."
+              required
+            ></textarea>
+          </label>
+          <button type="submit">Add note</button>
+        </form>
+
+        <div id="gig-notes" class="vertical-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-tag">Practice Schedule</p>
+            <h2>Lock in rehearsal time</h2>
+          </div>
+        </div>
+
+        <form id="practice-form" class="stack-form">
+          <div class="field-grid">
+            <label>
+              Practice date
+              <input type="date" name="date" required />
+            </label>
+            <label>
+              Time
+              <input type="time" name="time" required />
+            </label>
+          </div>
+
+          <label>
+            Focus
+            <input
+              type="text"
+              name="focus"
+              placeholder="Transitions, harmonies, endings"
+              required
+            />
+          </label>
+
+          <button type="submit">Schedule practice</button>
+        </form>
+
+        <div id="practice-sessions" class="vertical-list"></div>
+      </section>
+
+      <section class="panel span-2">
+        <div class="panel-heading">
+          <div>
+            <p class="section-tag">Stage Plot</p>
+            <h2>Stage Plot Creator</h2>
+          </div>
+          <button id="reset-stage" type="button" class="ghost-button">
+            Clear stage
+          </button>
+        </div>
+
+        <div class="stage-layout">
+          <form id="stage-item-form" class="stack-form compact-form">
+            <label id="stage-name-label">
+              Member name
+              <input
+                type="text"
+                name="name"
+                placeholder="Julian"
+                required
+              />
+            </label>
+            <label>
+              Type
+              <select name="type">
+                <option value="member">Band Member</option>
+                <option value="gear">Gear</option>
+              </select>
+            </label>
+            <label id="stage-role-group">
+              Role
+              <input
+                type="text"
+                name="role"
+                placeholder="Drummer"
+              />
+            </label>
+            <button type="submit">Add to stage</button>
+            <p class="helper-copy">
+              Tip: drag items around the stage to save your layout.
+            </p>
+          </form>
+
+          <div class="stage-shell">
+            <div class="stage-header">
+              <span>Audience</span>
+            </div>
+            <div id="stage-canvas" class="stage-canvas" aria-label="Stage plot"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <template id="empty-state-template">
+      <article class="empty-state">
+        <p>Nothing here yet. Add your first item above.</p>
+      </article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

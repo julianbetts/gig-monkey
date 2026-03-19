@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gig Monkey Setlists</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Bebas+Neue&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="setlists">
+    <div class="backdrop"></div>
+    <div class="noise"></div>
+
+    <header class="hero interior-hero">
+      <div class="hero-copy">
+        <nav class="top-nav" aria-label="Primary">
+          <a href="./index.html">Dashboard</a>
+          <a href="./setlists.html" class="is-current">Setlists</a>
+        </nav>
+        <p class="eyebrow">Setlist Library</p>
+        <h1>Store Every Show</h1>
+        <p class="lede">
+          Keep all your setlists in one place, choose the default one for the dashboard,
+          and manage edits, printing, or cleanup here.
+        </p>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="panel span-2">
+        <div class="panel-heading">
+          <div>
+            <p class="section-tag">Setlists</p>
+            <h2>Manage your library</h2>
+          </div>
+        </div>
+
+        <div class="setlist-layout">
+          <form id="setlist-form" class="stack-form">
+            <input type="hidden" name="setlistId" />
+            <div class="field-grid">
+              <label>
+                Setlist name
+                <input type="text" name="name" required />
+              </label>
+              <label>
+                Event date
+                <input type="date" name="date" />
+              </label>
+            </div>
+
+            <div class="stack-form">
+              <label for="song-fields">Songs</label>
+              <div id="song-fields" class="song-fields"></div>
+              <button id="add-song" type="button" class="ghost-button">
+                Add song
+              </button>
+            </div>
+
+            <div class="action-row">
+              <button id="save-setlist" type="submit">Save setlist</button>
+              <button id="cancel-edit" type="button" class="ghost-button hidden">
+                Cancel edit
+              </button>
+            </div>
+          </form>
+
+          <aside class="setlist-tools">
+            <p class="section-tag">Selected Setlist</p>
+            <div id="selected-setlist" class="selected-card empty-state">
+              <p>Select a setlist to edit, print, delete, or make it the default.</p>
+            </div>
+            <div class="action-row">
+              <button id="set-default-setlist" type="button">Show on dashboard</button>
+              <button id="print-setlist" type="button" class="ghost-button" disabled>
+                Print setlist
+              </button>
+              <button id="delete-setlist" type="button" class="ghost-button" disabled>
+                Delete setlist
+              </button>
+            </div>
+          </aside>
+        </div>
+
+        <div id="setlists" class="card-grid"></div>
+      </section>
+    </main>
+
+    <template id="empty-state-template">
+      <article class="empty-state">
+        <p>Nothing here yet. Add your first item above.</p>
+      </article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
