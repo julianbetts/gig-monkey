@@ -65,6 +65,7 @@ const stageNameInput = document.querySelector('#stage-item-form input[name="name
 const resetStageButton = document.querySelector("#reset-stage");
 const gigNotesRoot = document.querySelector("#gig-notes");
 const practicesRoot = document.querySelector("#practice-sessions");
+const calendarMonthsRoot = document.querySelector("#calendar-months");
 const stageCanvas = document.querySelector("#stage-canvas");
 const emptyStateTemplate = document.querySelector("#empty-state-template");
 
@@ -121,6 +122,7 @@ function bindSharedEvents() {
       practiceForm.reset();
       persist();
       renderPractices();
+      renderCalendar();
     });
   }
 
@@ -323,6 +325,7 @@ function renderDashboard() {
   renderDashboardDefaultSetlist();
   renderGigNotes();
   renderPractices();
+  renderCalendar();
   renderStage();
 }
 
@@ -417,10 +420,7 @@ function renderSelectedSetlist() {
 
   selectedSetlistRoot.className = "selected-card item-card";
   selectedSetlistRoot.innerHTML = `
-    <p class="meta">
-      ${setlist.id === state.defaultSetlistId ? "Default Setlist" : "Selected Setlist"}
-      ${setlist.date ? ` · ${formatDate(setlist.date)}` : ""}
-    </p>
+    ${setlist.date ? `<p class="meta">${formatDate(setlist.date)}</p>` : ""}
     <h3>${escapeHtml(setlist.name)}</h3>
     <ol class="song-list">
       ${setlist.songs.map((song) => `<li>${escapeHtml(song)}</li>`).join("")}
@@ -475,6 +475,126 @@ function renderPractices() {
       `;
       practicesRoot.append(article);
     });
+}
+
+function renderCalendar() {
+  if (!calendarMonthsRoot) {
+    return;
+  }
+
+  calendarMonthsRoot.innerHTML = "";
+
+  const practiceMonths = groupPracticesByMonth();
+
+  if (practiceMonths.length === 0) {
+    const emptyState = document.createElement("article");
+    emptyState.className = "empty-state";
+    emptyState.innerHTML = "<p>No practice dates yet. Add a session above and it will appear here.</p>";
+    calendarMonthsRoot.append(emptyState);
+    return;
+  }
+
+  practiceMonths.forEach(({ key, sessions }) => {
+    const [year, month] = key.split("-").map(Number);
+    const card = document.createElement("article");
+    card.className = "calendar-card";
+
+    const heading = document.createElement("h3");
+    heading.textContent = new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+    card.append(heading);
+
+    const weekdayRow = document.createElement("div");
+    weekdayRow.className = "calendar-weekdays";
+    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((day) => {
+      const label = document.createElement("span");
+      label.textContent = day;
+      weekdayRow.append(label);
+    });
+    card.append(weekdayRow);
+
+    const grid = document.createElement("div");
+    grid.className = "calendar-grid";
+
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const sessionsByDay = sessions.reduce((map, session) => {
+      const day = new Date(`${session.date}T12:00:00`).getDate();
+      if (!map.has(day)) {
+        map.set(day, []);
+      }
+      map.get(day).push(session);
+      return map;
+    }, new Map());
+
+    for (let index = 0; index < firstDay; index += 1) {
+      const filler = document.createElement("div");
+      filler.className = "calendar-filler";
+      grid.append(filler);
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const dayCell = document.createElement("div");
+      const daySessions = (sessionsByDay.get(day) || []).sort((a, b) =>
+        `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)
+      );
+
+      dayCell.className = `calendar-day${daySessions.length > 0 ? " has-events" : ""}`;
+
+      const dayNumber = document.createElement("div");
+      dayNumber.className = "calendar-day-number";
+      dayNumber.textContent = String(day);
+      dayCell.append(dayNumber);
+
+      if (daySessions.length > 0) {
+        const events = document.createElement("div");
+        events.className = "calendar-events";
+
+        daySessions.forEach((session) => {
+          const eventCard = document.createElement("div");
+          eventCard.className = "calendar-event";
+          eventCard.innerHTML = `
+            <span class="calendar-event-time">${escapeHtml(formatTime(session.time))}</span>
+            <span class="calendar-event-focus">${escapeHtml(session.focus)}</span>
+          `;
+          events.append(eventCard);
+        });
+
+        dayCell.append(events);
+      }
+
+      grid.append(dayCell);
+    }
+
+    card.append(grid);
+    calendarMonthsRoot.append(card);
+  });
+}
+
+function groupPracticesByMonth() {
+  const sessions = state.practices
+    .slice()
+    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
+
+  const months = new Map();
+
+  sessions.forEach((session) => {
+    const date = new Date(`${session.date}T12:00:00`);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+    if (!months.has(key)) {
+      months.set(key, []);
+    }
+
+    months.get(key).push(session);
+  });
+
+  return Array.from(months.entries()).map(([key, monthSessions]) => ({
+    key,
+    sessions: monthSessions,
+  }));
 }
 
 function renderStage() {

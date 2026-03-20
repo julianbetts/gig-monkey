@@ -24,64 +24,61 @@
         </nav>
         <p class="eyebrow">Setlist Library</p>
         <h1>Store Every Show</h1>
-        <p class="lede">
-          Keep all your setlists in one place, choose the default one for the dashboard,
-          and manage edits, printing, or cleanup here.
-        </p>
       </div>
     </header>
 
     <main class="dashboard">
       <section class="panel span-2">
+        <form id="setlist-form" class="stack-form">
+          <input type="hidden" name="setlistId" />
+          <div class="field-grid">
+            <input type="date" name="date" aria-label="Event date" />
+            <input
+              type="text"
+              name="name"
+              placeholder="Setlist name"
+              aria-label="Setlist name"
+              required
+            />
+          </div>
+
+          <div class="stack-form setlist-song-group">
+            <div id="song-fields" class="song-fields"></div>
+          </div>
+
+          <div class="setlist-primary-actions">
+            <button id="add-song" type="button" class="ghost-button setlist-matched-button">
+              Add
+            </button>
+            <button id="save-setlist" type="submit" class="setlist-matched-button">Save</button>
+          </div>
+
+          <div class="action-row setlist-save-row">
+            <button id="cancel-edit" type="button" class="ghost-button hidden">
+              Cancel edit
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel span-2">
         <div class="panel-heading">
           <div>
-            <p class="section-tag">Setlists</p>
-            <h2>Manage your library</h2>
+            <p class="section-tag">Setlist Library</p>
           </div>
         </div>
-
         <div class="setlist-layout">
-          <form id="setlist-form" class="stack-form">
-            <input type="hidden" name="setlistId" />
-            <div class="field-grid">
-              <label>
-                Setlist name
-                <input type="text" name="name" required />
-              </label>
-              <label>
-                Event date
-                <input type="date" name="date" />
-              </label>
-            </div>
-
-            <div class="stack-form">
-              <label for="song-fields">Songs</label>
-              <div id="song-fields" class="song-fields"></div>
-              <button id="add-song" type="button" class="ghost-button">
-                Add song
-              </button>
-            </div>
-
-            <div class="action-row">
-              <button id="save-setlist" type="submit">Save setlist</button>
-              <button id="cancel-edit" type="button" class="ghost-button hidden">
-                Cancel edit
-              </button>
-            </div>
-          </form>
-
           <aside class="setlist-tools">
-            <p class="section-tag">Selected Setlist</p>
             <div id="selected-setlist" class="selected-card empty-state">
               <p>Select a setlist to edit, print, delete, or make it the default.</p>
             </div>
             <div class="action-row">
-              <button id="set-default-setlist" type="button">Show on dashboard</button>
+              <button id="set-default-setlist" type="button">Show</button>
               <button id="print-setlist" type="button" class="ghost-button" disabled>
-                Print setlist
+                Print
               </button>
               <button id="delete-setlist" type="button" class="ghost-button" disabled>
-                Delete setlist
+                Delete
               </button>
             </div>
           </aside>
