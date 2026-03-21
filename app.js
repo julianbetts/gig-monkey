@@ -28,6 +28,7 @@ const state = loadState();
 let dragState = null;
 let selectedSetlistId = state.defaultSetlistId ?? state.setlists[0]?.id ?? null;
 let selectedStageItemId = null;
+let selectedCalendarEventId = null;
 
 if (!state.defaultSetlistId && selectedSetlistId) {
   state.defaultSetlistId = selectedSetlistId;
@@ -64,10 +65,12 @@ const clearStageItemButton = document.querySelector("#clear-stage-item");
 const gigNotesRoot = document.querySelector("#gig-notes");
 const practicesRoot = document.querySelector("#practice-sessions");
 const calendarMonthsRoot = document.querySelector("#calendar-months");
+const calendarEventDetailRoot = document.querySelector("#calendar-event-detail");
 const stageCanvas = document.querySelector("#stage-canvas");
 const emptyStateTemplate = document.querySelector("#empty-state-template");
 
 bindSharedEvents();
+bindCalendarEvents();
 
 if (page === "dashboard") {
   if (dashboardPrintSetlistButton) {
@@ -358,6 +361,7 @@ function renderDashboard() {
   renderGigNotes();
   renderPractices();
   renderCalendar();
+  renderCalendarEventDetail();
   renderStage();
 }
 
@@ -509,8 +513,7 @@ function renderPractices() {
     });
 }
 
-function renderCalendar
-() {
+function renderCalendar() {
   if (!calendarMonthsRoot) {
     return;
   }
@@ -518,6 +521,15 @@ function renderCalendar
   calendarMonthsRoot.innerHTML = "";
 
   const practiceMonths = groupPracticesByMonth();
+  const allSessions = practiceMonths.flatMap(({ sessions }) => sessions);
+
+  if (selectedCalendarEventId && !allSessions.some((session) => session.id === selectedCalendarEventId)) {
+    selectedCalendarEventId = null;
+  }
+
+  if (!selectedCalendarEventId && allSessions.length > 0) {
+    selectedCalendarEventId = allSessions[0].id;
+  }
 
   if (practiceMonths.length === 0) {
     const emptyState = document.createElement("article");
@@ -568,46 +580,70 @@ function renderCalendar
       grid.append(filler);
     }
 
-for (let day = 1; day <= daysInMonth; day += 1) {
-  const dayCell = document.createElement("div");
-  const daySessions = (sessionsByDay.get(day) || []).sort((a, b) =>
-    `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)
-  );
-  const typeClass = daySessions.length > 0
-    ? ` has-events has-${normalizeEventType(daySessions[0].type)}`
-    : "";
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const dayCell = document.createElement("div");
+      const daySessions = (sessionsByDay.get(day) || []).sort((a, b) =>
+        `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)
+      );
+      const typeClass = daySessions.length > 0
+        ? ` has-events has-${normalizeEventType(daySessions[0].type)}`
+        : "";
 
-  dayCell.className = `calendar-day${typeClass}`;
+      dayCell.className = `calendar-day${typeClass}`;
 
-  const dayNumber = document.createElement("div");
-  dayNumber.className = "calendar-day-number";
-  dayNumber.textContent = String(day);
-  dayCell.append(dayNumber);
+      const dayNumber = document.createElement("div");
+      dayNumber.className = "calendar-day-number";
+      dayNumber.textContent = String(day);
+      dayCell.append(dayNumber);
 
-  if (daySessions.length > 0) {
-    const events = document.createElement("div");
-    events.className = "calendar-events";
+      if (daySessions.length > 0) {
+        const events = document.createElement("div");
+        events.className = "calendar-events";
 
-    daySessions.forEach((session) => {
-      const type = normalizeEventType(session.type);
-      const eventCard = document.createElement("div");
-      eventCard.className = `calendar-event is-${type}`;
-      eventCard.innerHTML = `
-        <span class="calendar-event-time">${escapeHtml(formatTime(session.time))}</span>
-        <span class="calendar-event-focus">${escapeHtml(getEventLabel(session))}</span>
-      `;
-      events.append(eventCard);
-    });
+        daySessions.forEach((session) => {
+          const type = normalizeEventType(session.type);
+          const eventCard = document.createElement("button");
+          eventCard.type = "button";
+          eventCard.className = `calendar-event is-${type}${session.id === selectedCalendarEventId ? " is-selected" : ""}`;
+          eventCard.dataset.eventId = session.id;
+          eventCard.setAttribute("aria-label", `${getEventLabel(session)} on ${formatDate(session.date)} at ${formatTime(session.time)}`);
+          eventCard.innerHTML = `
+            <span class="calendar-event-time">${escapeHtml(formatTime(session.time))}</span>
+            <span class="calendar-event-focus">${escapeHtml(getEventLabel(session))}</span>
+          `;
+          events.append(eventCard);
+        });
 
-    dayCell.append(events);
-  }
+        dayCell.append(events);
+      }
 
-  grid.append(dayCell);
-}
+      grid.append(dayCell);
+    }
 
     card.append(grid);
     calendarMonthsRoot.append(card);
   });
+}
+
+function renderCalendarEventDetail() {
+  if (!calendarEventDetailRoot) {
+    return;
+  }
+
+  const session = state.practices.find((entry) => entry.id === selectedCalendarEventId) ?? null;
+
+  if (!session) {
+    calendarEventDetailRoot.className = "calendar-detail empty-state";
+    calendarEventDetailRoot.innerHTML = "<p>Tap an event to view its details.</p>";
+    return;
+  }
+
+  calendarEventDetailRoot.className = "calendar-detail item-row";
+  calendarEventDetailRoot.innerHTML = `
+    <p class="meta">${formatDate(session.date)} at ${formatTime(session.time)}</p>
+    <h3>${escapeHtml(getEventLabel(session))}</h3>
+    <p class="detail-copy">${escapeHtml(formatEventType(normalizeEventType(session.type)))}</p>
+  `;
 }
 
 function groupPracticesByMonth() {
@@ -632,6 +668,23 @@ function groupPracticesByMonth() {
     key,
     sessions: monthSessions,
   }));
+}
+
+function bindCalendarEvents() {
+  if (!calendarMonthsRoot) {
+    return;
+  }
+
+  calendarMonthsRoot.addEventListener("click", (event) => {
+    const eventCard = event.target.closest(".calendar-event");
+    if (!eventCard) {
+      return;
+    }
+
+    selectedCalendarEventId = eventCard.dataset.eventId;
+    renderCalendar();
+    renderCalendarEventDetail();
+  });
 }
 
 function renderStage() {
@@ -672,7 +725,7 @@ function updateStageFormFields() {
 
   const isMember = stageTypeSelect.value === "member";
   stageNameLabel.firstChild.textContent = isMember ? "Member name" : "Item name";
-  stageNameInput.placeholder = isMember ? "Julian" : "Bass Rig";
+  stageNameInput.placeholder = isMember ? "" : "Bass Rig";
   stageRoleGroup.classList.toggle("hidden", !isMember);
   stageRoleInput.required = isMember;
 

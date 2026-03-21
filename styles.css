@@ -447,29 +447,48 @@ button:hover {
 }
 
 .calendar-event {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
   border-radius: 14px;
   padding: 0.45rem 0.55rem;
   border-left: 4px solid transparent;
+  box-shadow: none;
+}
+
+.calendar-event.is-selected {
+  box-shadow: inset 0 0 0 2px rgba(23, 19, 17, 0.16);
 }
 
 .calendar-event.is-rehearsal {
-  background: rgba(211, 155, 34, 0.14);
+  background: var(--event-rehearsal);
   border-left-color: var(--event-rehearsal);
+  color: #fffaf0;
 }
 
 .calendar-event.is-gig {
-  background: rgba(216, 76, 47, 0.12);
+  background: var(--event-gig);
   border-left-color: var(--event-gig);
+  color: #fff6f2;
 }
 
 .calendar-event.is-recording {
-  background: rgba(36, 128, 108, 0.12);
+  background: var(--event-recording);
   border-left-color: var(--event-recording);
+  color: #f3fffb;
 }
 
 .calendar-event.is-other {
-  background: rgba(125, 125, 125, 0.12);
+  background: var(--event-other);
   border-left-color: var(--event-other);
+  color: #ffffff;
 }
 
 
@@ -488,6 +507,10 @@ button:hover {
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.35;
+}
+
+.calendar-detail {
+  margin-top: 1rem;
 }
 
 .stage-layout {
@@ -640,7 +663,27 @@ button:hover {
     padding: 0.5rem;
   }
 
+  .calendar-events {
+    gap: 0.3rem;
+  }
+
+  .calendar-event {
+    min-height: 0.95rem;
+    border-radius: 999px;
+    border-left-width: 0;
+    padding: 0;
+  }
+
+  .calendar-event.is-selected {
+    box-shadow: inset 0 0 0 2px rgba(23, 19, 17, 0.24);
+  }
+
+  .calendar-event-time,
   .calendar-event-focus {
-    font-size: 0.75rem;
+    display: none;
+  }
+
+  .calendar-detail {
+    margin-top: 0.85rem;
   }
 }
