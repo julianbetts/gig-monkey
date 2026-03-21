@@ -19,14 +19,7 @@ const defaultState = {
       details: "Park in the alley after 5 PM. Soundcheck is at 6:15. Bring the DI box.",
     },
   ],
-  practices: [
-    {
-      id: crypto.randomUUID(),
-      date: "2026-03-22",
-      time: "19:00",
-      focus: "Tighten endings and transitions between songs 3 to 5.",
-    },
-  ],
+  practices: [],
   stageItems: defaultStageItems,
   defaultSetlistId: null,
 };
@@ -56,6 +49,9 @@ const setDefaultButton = document.querySelector("#set-default-setlist");
 const setlistsRoot = document.querySelector("#setlists");
 const gigNoteForm = document.querySelector("#gig-note-form");
 const practiceForm = document.querySelector("#practice-form");
+const practiceTypeSelect = document.querySelector('#practice-form select[name="type"]');
+const practiceOtherLabel = document.querySelector("#practice-other-label");
+const practiceOtherInput = document.querySelector('#practice-form input[name="otherLabel"]');
 const stageItemForm = document.querySelector("#stage-item-form");
 const stageTypeSelect = document.querySelector('#stage-item-form select[name="type"]');
 const stageRoleGroup = document.querySelector("#stage-role-group");
@@ -107,26 +103,40 @@ function bindSharedEvents() {
     });
   }
 
-  if (practiceForm) {
-    practiceForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const formData = new FormData(practiceForm);
+if (practiceForm) {
+  syncPracticeFormFields();
 
-      state.practices.unshift({
-        id: crypto.randomUUID(),
-        date: formData.get("date"),
-        time: formData.get("time"),
-        focus: formData.get("focus").trim(),
-      });
-
-      practiceForm.reset();
-      persist();
-      renderPractices();
-      renderCalendar();
+  if (practiceTypeSelect) {
+    practiceTypeSelect.addEventListener("change", () => {
+      syncPracticeFormFields();
     });
   }
 
-  if (stageItemForm) {
+  practiceForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const formData = new FormData(practiceForm);
+    const type = normalizeEventType(formData.get("type"));
+    const customLabel = type === "other" ? formData.get("otherLabel").trim() : "";
+
+    state.practices.unshift({
+      id: crypto.randomUUID(),
+      date: formData.get("date"),
+      time: formData.get("time"),
+      type,
+      customLabel,
+    });
+
+    practiceForm.reset();
+    practiceForm.elements.type.value = "rehearsal";
+    syncPracticeFormFields();
+    persist();
+    renderPractices();
+    renderCalendar();
+  });
+}
+
+if (stageItemForm)
+ {
     updateStageFormFields();
 
     if (stageTypeSelect) {
@@ -467,17 +477,18 @@ function renderPractices() {
     .slice()
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
     .forEach((session) => {
-      const article = document.createElement("article");
-      article.className = "item-row";
-      article.innerHTML = `
+      const row = document.createElement("div");
+      row.className = "item-row";
+      row.innerHTML = `
         <p class="meta">${formatDate(session.date)} at ${formatTime(session.time)}</p>
-        <h3>${escapeHtml(session.focus)}</h3>
+        <h3>${escapeHtml(getEventLabel(session))}</h3>
       `;
-      practicesRoot.append(article);
+      practicesRoot.append(row);
     });
 }
 
-function renderCalendar() {
+function renderCalendar
+() {
   if (!calendarMonthsRoot) {
     return;
   }
@@ -535,38 +546,42 @@ function renderCalendar() {
       grid.append(filler);
     }
 
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const dayCell = document.createElement("div");
-      const daySessions = (sessionsByDay.get(day) || []).sort((a, b) =>
-        `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)
-      );
+for (let day = 1; day <= daysInMonth; day += 1) {
+  const dayCell = document.createElement("div");
+  const daySessions = (sessionsByDay.get(day) || []).sort((a, b) =>
+    `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)
+  );
+  const typeClass = daySessions.length > 0
+    ? ` has-events has-${normalizeEventType(daySessions[0].type)}`
+    : "";
 
-      dayCell.className = `calendar-day${daySessions.length > 0 ? " has-events" : ""}`;
+  dayCell.className = `calendar-day${typeClass}`;
 
-      const dayNumber = document.createElement("div");
-      dayNumber.className = "calendar-day-number";
-      dayNumber.textContent = String(day);
-      dayCell.append(dayNumber);
+  const dayNumber = document.createElement("div");
+  dayNumber.className = "calendar-day-number";
+  dayNumber.textContent = String(day);
+  dayCell.append(dayNumber);
 
-      if (daySessions.length > 0) {
-        const events = document.createElement("div");
-        events.className = "calendar-events";
+  if (daySessions.length > 0) {
+    const events = document.createElement("div");
+    events.className = "calendar-events";
 
-        daySessions.forEach((session) => {
-          const eventCard = document.createElement("div");
-          eventCard.className = "calendar-event";
-          eventCard.innerHTML = `
-            <span class="calendar-event-time">${escapeHtml(formatTime(session.time))}</span>
-            <span class="calendar-event-focus">${escapeHtml(session.focus)}</span>
-          `;
-          events.append(eventCard);
-        });
+    daySessions.forEach((session) => {
+      const type = normalizeEventType(session.type);
+      const eventCard = document.createElement("div");
+      eventCard.className = `calendar-event is-${type}`;
+      eventCard.innerHTML = `
+        <span class="calendar-event-time">${escapeHtml(formatTime(session.time))}</span>
+        <span class="calendar-event-focus">${escapeHtml(getEventLabel(session))}</span>
+      `;
+      events.append(eventCard);
+    });
 
-        dayCell.append(events);
-      }
+    dayCell.append(events);
+  }
 
-      grid.append(dayCell);
-    }
+  grid.append(dayCell);
+}
 
     card.append(grid);
     calendarMonthsRoot.append(card);
@@ -814,6 +829,10 @@ function loadState() {
       ...structuredClone(defaultState),
       ...parsed,
     };
+    const isLegacyPractice = (session) =>
+      session?.date === "2026-03-22" &&
+      session?.time === "19:00" &&
+      session?.focus === "Tighten endings and transitions between songs 3 to 5.";
 
     if (!Array.isArray(nextState.setlists)) {
       nextState.setlists = structuredClone(defaultState.setlists);
@@ -826,6 +845,14 @@ function loadState() {
     if (!Array.isArray(nextState.practices)) {
       nextState.practices = structuredClone(defaultState.practices);
     }
+
+nextState.practices = nextState.practices
+  .filter((session) => !isLegacyPractice(session))
+  .map((session) => ({
+    ...session,
+    type: normalizeEventType(session.type),
+    customLabel: typeof session.customLabel === "string" ? session.customLabel.trim() : "",
+  }));
 
     if (!Array.isArray(nextState.stageItems) || nextState.stageItems.length === 0) {
       nextState.stageItems = structuredClone(defaultStageItems);
@@ -872,7 +899,47 @@ function formatTime(timeString) {
   });
 }
 
-function clamp(value, min, max) {
+function syncPracticeFormFields() {
+  if (!practiceTypeSelect || !practiceOtherLabel || !practiceOtherInput) {
+    return;
+  }
+
+  const isOther = normalizeEventType(practiceTypeSelect.value) === "other";
+  practiceOtherLabel.classList.toggle("hidden", !isOther);
+  practiceOtherInput.required = isOther;
+
+  if (!isOther) {
+    practiceOtherInput.value = "";
+  }
+}
+
+function normalizeEventType(type) {
+  const value = typeof type === "string" ? type.toLowerCase() : "";
+
+  if (["rehearsal", "gig", "recording", "other"].includes(value)) {
+    return value;
+  }
+
+  return "other";
+}
+
+function formatEventType(type) {
+  const normalizedType = normalizeEventType(type);
+  return normalizedType.charAt(0).toUpperCase() + normalizedType.slice(1);
+}
+
+function getEventLabel(session) {
+  const type = normalizeEventType(session.type);
+
+  if (type === "other" && typeof session.customLabel === "string" && session.customLabel.trim()) {
+    return session.customLabel.trim();
+  }
+
+  return formatEventType(type);
+}
+
+function clamp
+(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 

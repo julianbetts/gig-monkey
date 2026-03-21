@@ -27,36 +27,37 @@
       </div>
 
       <div class="hero-card">
-        <p class="hero-label">Tonight's Snapshot</p>
+        <p class="hero-label">sample text</p>
         <ul>
-          <li>Setlists for every show</li>
-          <li>Practice dates and reminders</li>
-          <li>Gig notes for venues and staff</li>
-          <li>Drag-and-drop stage plots</li>
+          <li>sample text</li>
+          <li>sample text</li>
+          <li>sample text</li>
+          <li>sample text</li>
         </ul>
       </div>
     </header>
 
     <main class="dashboard">
-      <section class="panel span-2">
+      <section class="panel">
         <div class="panel-heading">
           <div>
-            <p class="section-tag">Default Setlist</p>
-            <h2>Main page show-ready view</h2>
-          </div>
-          <div class="action-row">
-            <a href="./setlists.html" class="panel-link">Manage</a>
-            <button id="dashboard-print-setlist" type="button" class="ghost-button">
-              Print
-            </button>
+            <p class="section-tag">Setlist Maker</p>
+            <h2>Setlist Maker</h2>
           </div>
         </div>
 
         <div id="dashboard-default-setlist" class="selected-card empty-state">
           <p>No default setlist yet. Create one on the setlists page.</p>
         </div>
+        <div class="action-row dashboard-setlist-actions">
+          <a href="./setlists.html" class="panel-link">Manage</a>
+          <button id="dashboard-print-setlist" type="button" class="ghost-button">
+            Print
+          </button>
+        </div>
       </section>
 
+      <!--
       <section class="panel">
         <div class="panel-heading">
           <div>
@@ -89,41 +90,61 @@
 
         <div id="gig-notes" class="vertical-list"></div>
       </section>
+      -->
 
       <section class="panel">
         <div class="panel-heading">
           <div>
             <p class="section-tag">Practice Schedule</p>
-            <h2>Lock in rehearsal time</h2>
+            <h2>Scheduler</h2>
           </div>
         </div>
 
-        <form id="practice-form" class="stack-form">
-          <div class="field-grid">
-            <label>
-              Practice date
-              <input type="date" name="date" required />
-            </label>
-            <label>
-              Time
-              <input type="time" name="time" required />
-            </label>
+<form id="practice-form" class="stack-form">
+  <label>
+    Event type
+    <select name="type" required>
+      <option value="rehearsal">Rehearsal</option>
+      <option value="gig">Gig</option>
+      <option value="recording">Recording</option>
+      <option value="other">Other</option>
+    </select>
+  </label>
+
+  <label id="practice-other-label" class="hidden">
+    Custom event name
+    <input
+      type="text"
+      name="otherLabel"
+      placeholder="Photo shoot, meeting, promo day"
+    />
+  </label>
+
+  <div class="field-grid">
+    <label>
+      Event date
+      <input type="date" name="date" required />
+    </label>
+    <label>
+      Time
+      <input type="time" name="time" required />
+    </label>
+  </div>
+
+  <button type="submit">Schedule event</button>
+</form>
+
+      </section>
+
+      <section class="panel span-2">
+        <div class="panel-heading">
+          <div>
+            <p class="section-tag">Calendar</p>
+            <h2>Schedule at a glance</h2>
           </div>
+        </div>
 
-          <label>
-            Focus
-            <input
-              type="text"
-              name="focus"
-              placeholder="Transitions, harmonies, endings"
-              required
-            />
-          </label>
-
-          <button type="submit">Schedule practice</button>
-        </form>
-
-        <div id="practice-sessions" class="vertical-list"></div>
+        <div id="calendar-months" class="calendar-stack"></div>
       </section>
 
       <section class="panel span-2">
@@ -144,7 +165,6 @@
               <input
                 type="text"
                 name="name"
-                placeholder="Julian"
                 required
               />
             </label>
@@ -160,7 +180,6 @@
               <input
                 type="text"
                 name="role"
-                placeholder="Drummer"
               />
             </label>
             <button type="submit">Add to stage</button>
