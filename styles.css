@@ -243,6 +243,19 @@ button:hover {
   box-shadow: none;
 }
 
+.stage-print-button {
+  background: rgba(23, 19, 17, 0.08);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.stage-erase-button {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid rgba(23, 19, 17, 0.28);
+  box-shadow: none;
+}
+
 .card-grid,
 .vertical-list {
   display: grid;
@@ -468,27 +481,27 @@ button:hover {
 }
 
 .calendar-event.is-rehearsal {
-  background: var(--event-rehearsal);
+  background: rgba(211, 155, 34, 0.14);
   border-left-color: var(--event-rehearsal);
-  color: #fffaf0;
+  color: var(--ink);
 }
 
 .calendar-event.is-gig {
-  background: var(--event-gig);
+  background: rgba(216, 76, 47, 0.12);
   border-left-color: var(--event-gig);
-  color: #fff6f2;
+  color: var(--ink);
 }
 
 .calendar-event.is-recording {
-  background: var(--event-recording);
+  background: rgba(36, 128, 108, 0.12);
   border-left-color: var(--event-recording);
-  color: #f3fffb;
+  color: var(--ink);
 }
 
 .calendar-event.is-other {
-  background: var(--event-other);
+  background: rgba(125, 125, 125, 0.12);
   border-left-color: var(--event-other);
-  color: #ffffff;
+  color: var(--ink);
 }
 
 
@@ -672,6 +685,26 @@ button:hover {
     border-radius: 999px;
     border-left-width: 0;
     padding: 0;
+  }
+
+  .calendar-event.is-rehearsal {
+    background: var(--event-rehearsal);
+    color: #fffaf0;
+  }
+
+  .calendar-event.is-gig {
+    background: var(--event-gig);
+    color: #fff6f2;
+  }
+
+  .calendar-event.is-recording {
+    background: var(--event-recording);
+    color: #f3fffb;
+  }
+
+  .calendar-event.is-other {
+    background: var(--event-other);
+    color: #ffffff;
   }
 
   .calendar-event.is-selected {

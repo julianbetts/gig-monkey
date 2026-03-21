@@ -60,8 +60,8 @@ const stageRoleGroup = document.querySelector("#stage-role-group");
 const stageRoleInput = document.querySelector('#stage-item-form input[name="role"]');
 const stageNameLabel = document.querySelector("#stage-name-label");
 const stageNameInput = document.querySelector('#stage-item-form input[name="name"]');
-const resetStageButton = document.querySelector("#reset-stage");
 const clearStageItemButton = document.querySelector("#clear-stage-item");
+const printStageButton = document.querySelector("#print-stage");
 const gigNotesRoot = document.querySelector("#gig-notes");
 const practicesRoot = document.querySelector("#practice-sessions");
 const calendarMonthsRoot = document.querySelector("#calendar-months");
@@ -186,12 +186,9 @@ if (practiceForm) {
     });
   }
 
-  if (resetStageButton) {
-    resetStageButton.addEventListener("click", () => {
-      state.stageItems = structuredClone(defaultStageItems);
-      selectedStageItemId = null;
-      persist();
-      renderStage();
+  if (printStageButton) {
+    printStageButton.addEventListener("click", () => {
+      printStagePlot();
     });
   }
 
@@ -421,9 +418,6 @@ function renderSetlists() {
 
     article.className = `item-card${isSelected ? " is-selected" : ""}`;
     article.innerHTML = `
-      <p class="meta">
-        ${isDefault ? "Default Setlist" : "Setlist"}${setlist.date ? ` · ${formatDate(setlist.date)}` : ""}
-      </p>
       <h3>${escapeHtml(setlist.name)}</h3>
       <ol class="song-list">
         ${setlist.songs.map((song) => `<li>${escapeHtml(song)}</li>`).join("")}
@@ -830,6 +824,120 @@ function getSelectedSetlist() {
 
 function getDefaultSetlist() {
   return state.setlists.find((entry) => entry.id === state.defaultSetlistId) ?? null;
+}
+
+function printStagePlot() {
+  const printWindow = window.open("", "_blank", "width=900,height=700");
+  if (!printWindow) {
+    return;
+  }
+
+  const stageMarkup = state.stageItems
+    .map((item) => {
+      const subtitle = item.type === "member" ? item.role || "Band Member" : "Gear";
+      return `
+        <div
+          class="stage-item-print ${item.type}"
+          style="left:${item.x}%; top:${item.y}%;"
+        >
+          <strong>${escapeHtml(item.name)}</strong>
+          <span>${escapeHtml(subtitle)}</span>
+        </div>
+      `;
+    })
+    .join("");
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Stage Plot</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 28px 24px 36px;
+            color: #171311;
+            background: #fff;
+          }
+          h1 {
+            margin: 0 0 6px;
+            text-align: center;
+            font-size: 34px;
+          }
+          p {
+            margin: 0 0 22px;
+            text-align: center;
+            color: #5f544d;
+            font-size: 14px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+          .stage-shell-print {
+            position: relative;
+            min-height: 480px;
+            border-radius: 26px;
+            overflow: hidden;
+            background:
+              linear-gradient(0deg, rgba(23, 19, 17, 0.12) 0 12%, transparent 12% 100%),
+              linear-gradient(180deg, #55584d 0%, #2a2c28 100%);
+            border: 1px solid rgba(23, 19, 17, 0.12);
+          }
+          .audience-label {
+            position: absolute;
+            top: 18px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 12px;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+          }
+          .stage-item-print {
+            position: absolute;
+            min-width: 104px;
+            padding: 12px 14px;
+            border-radius: 18px;
+            color: #fff;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+          }
+          .stage-item-print.member {
+            background: linear-gradient(135deg, rgba(216, 76, 47, 0.98), rgba(159, 43, 23, 0.98));
+          }
+          .stage-item-print.gear {
+            background: linear-gradient(135deg, rgba(44, 44, 41, 0.98), rgba(17, 17, 17, 0.98));
+          }
+          .stage-item-print strong,
+          .stage-item-print span {
+            display: block;
+          }
+          .stage-item-print strong {
+            font-size: 15px;
+          }
+          .stage-item-print span {
+            margin-top: 4px;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            opacity: 0.84;
+            text-transform: uppercase;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Stage Plot</h1>
+        <p>Audience</p>
+        <div class="stage-shell-print">
+          <div class="audience-label">Audience</div>
+          ${stageMarkup}
+        </div>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
 }
 
 function printSetlist(setlist) {
