@@ -499,10 +499,9 @@ button:hover {
   align-content: start;
 }
 
-.helper-copy {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
+.stage-form-actions {
+  display: grid;
+  gap: 0.7rem;
 }
 
 .stage-shell {
@@ -560,6 +559,10 @@ button:hover {
 
 .stage-item:active {
   cursor: grabbing;
+}
+
+.stage-item.is-selected {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.92), 0 14px 28px rgba(0, 0, 0, 0.22);
 }
 
 .stage-item strong,

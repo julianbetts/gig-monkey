@@ -153,9 +153,6 @@
             <p class="section-tag">Stage Plot</p>
             <h2>Stage Plot Creator</h2>
           </div>
-          <button id="reset-stage" type="button" class="ghost-button">
-            Clear stage
-          </button>
         </div>
 
         <div class="stage-layout">
@@ -183,9 +180,14 @@
               />
             </label>
             <button type="submit">Add to stage</button>
-            <p class="helper-copy">
-              Tip: drag items around the stage to save your layout.
-            </p>
+            <div class="stage-form-actions">
+              <button id="clear-stage-item" type="button" class="ghost-button" disabled>
+                Clear element
+              </button>
+              <button id="reset-stage" type="button" class="ghost-button">
+                Clear stage
+              </button>
+            </div>
           </form>
 
           <div class="stage-shell">

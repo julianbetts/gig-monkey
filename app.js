@@ -27,6 +27,7 @@ const defaultState = {
 const state = loadState();
 let dragState = null;
 let selectedSetlistId = state.defaultSetlistId ?? state.setlists[0]?.id ?? null;
+let selectedStageItemId = null;
 
 if (!state.defaultSetlistId && selectedSetlistId) {
   state.defaultSetlistId = selectedSetlistId;
@@ -59,6 +60,7 @@ const stageRoleInput = document.querySelector('#stage-item-form input[name="role
 const stageNameLabel = document.querySelector("#stage-name-label");
 const stageNameInput = document.querySelector('#stage-item-form input[name="name"]');
 const resetStageButton = document.querySelector("#reset-stage");
+const clearStageItemButton = document.querySelector("#clear-stage-item");
 const gigNotesRoot = document.querySelector("#gig-notes");
 const practicesRoot = document.querySelector("#practice-sessions");
 const calendarMonthsRoot = document.querySelector("#calendar-months");
@@ -135,8 +137,7 @@ if (practiceForm) {
   });
 }
 
-if (stageItemForm)
- {
+  if (stageItemForm) {
     updateStageFormFields();
 
     if (stageTypeSelect) {
@@ -150,8 +151,10 @@ if (stageItemForm)
       const formData = new FormData(stageItemForm);
       const type = formData.get("type");
 
+      const id = crypto.randomUUID();
+
       state.stageItems.push({
-        id: crypto.randomUUID(),
+        id,
         name: formData.get("name").trim(),
         role: type === "member" ? formData.get("role").trim() : "",
         type,
@@ -159,8 +162,22 @@ if (stageItemForm)
         y: 50,
       });
 
+      selectedStageItemId = id;
       stageItemForm.reset();
       updateStageFormFields();
+      persist();
+      renderStage();
+    });
+  }
+
+  if (clearStageItemButton) {
+    clearStageItemButton.addEventListener("click", () => {
+      if (!selectedStageItemId) {
+        return;
+      }
+
+      state.stageItems = state.stageItems.filter((item) => item.id !== selectedStageItemId);
+      selectedStageItemId = null;
       persist();
       renderStage();
     });
@@ -169,6 +186,7 @@ if (stageItemForm)
   if (resetStageButton) {
     resetStageButton.addEventListener("click", () => {
       state.stageItems = structuredClone(defaultStageItems);
+      selectedStageItemId = null;
       persist();
       renderStage();
     });
@@ -178,8 +196,12 @@ if (stageItemForm)
     stageCanvas.addEventListener("pointerdown", (event) => {
       const item = event.target.closest(".stage-item");
       if (!item) {
+        selectedStageItemId = null;
+        renderStage();
         return;
       }
+
+      selectedStageItemId = item.dataset.id;
 
       const canvasRect = stageCanvas.getBoundingClientRect();
       const itemRect = item.getBoundingClientRect();
@@ -617,12 +639,20 @@ function renderStage() {
     return;
   }
 
+  if (selectedStageItemId && !state.stageItems.some((item) => item.id === selectedStageItemId)) {
+    selectedStageItemId = null;
+  }
+
+  if (clearStageItemButton) {
+    clearStageItemButton.disabled = !selectedStageItemId;
+  }
+
   stageCanvas.innerHTML = "";
 
   state.stageItems.forEach((item) => {
     const element = document.createElement("button");
     element.type = "button";
-    element.className = "stage-item";
+    element.className = `stage-item${item.id === selectedStageItemId ? " is-selected" : ""}`;
     element.dataset.id = item.id;
     element.dataset.type = item.type;
     element.style.left = `${item.x}%`;
