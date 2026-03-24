@@ -1243,37 +1243,35 @@ function renderAuthPanel() {
   }
 
   const isLogin = authMode === "login";
-  const hasAccounts = authState.accounts.length > 0;
   const feedbackMarkup = authMessage
     ? `<div class="auth-feedback is-${escapeHtml(authMessageType)}">${escapeHtml(authMessage)}</div>`
     : "";
 
   authPanelRoot.innerHTML = `
-    <div class="auth-header">
-      <div>
-        <p class="hero-label">Optional Account</p>
-        <h2>${isLogin ? "Log in" : "Sign up"}</h2>
-      </div>
-      <div class="auth-toggle-row" role="tablist" aria-label="Authentication mode">
-        <button id="show-login" type="button" class="auth-toggle${isLogin ? " is-active" : ""}">Log in</button>
-        <button id="show-signup" type="button" class="auth-toggle${!isLogin ? " is-active" : ""}">Sign up</button>
-      </div>
-    </div>
-    <p class="auth-panel-copy">You can use Gig Monkey without an account. Create one if you want a separate saved profile on this browser.</p>
     ${feedbackMarkup}
     ${isLogin ? `
-      <form id="auth-login-form" class="auth-form">
-        <label>
-          Email
-          <input type="email" name="email" autocomplete="email" required />
-        </label>
-        <label>
-          Password
-          <input type="password" name="password" autocomplete="current-password" required />
-        </label>
-        <button type="submit">Log in</button>
+      <form id="auth-login-form" class="auth-form auth-form-compact">
+        <input
+          type="email"
+          name="email"
+          autocomplete="email"
+          placeholder="Email"
+          aria-label="Email"
+          required
+        />
+        <input
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          placeholder="Password"
+          aria-label="Password"
+          required
+        />
+        <div class="auth-form-actions">
+          <button type="submit">Log in</button>
+          <button id="show-signup" type="button" class="secondary-button">Sign up</button>
+        </div>
       </form>
-      <p class="auth-lock-note">${hasAccounts ? "Use an existing account if you want your own saved profile." : "No account exists yet. You can still keep using the app as a guest."}</p>
     ` : `
       <form id="auth-signup-form" class="auth-form">
         <label>
@@ -1292,16 +1290,13 @@ function renderAuthPanel() {
           Confirm password
           <input type="password" name="confirmPassword" autocomplete="new-password" minlength="6" required />
         </label>
-        <button type="submit">Create account</button>
+        <div class="auth-form-actions auth-form-actions-single">
+          <button type="submit">Create account</button>
+        </div>
       </form>
       <p class="auth-lock-note">Accounts are stored locally in this browser for now, and guest mode still works without signing up.</p>
     `}
   `;
-
-  authPanelRoot.querySelector("#show-login")?.addEventListener("click", () => {
-    authMode = "login";
-    renderAuthPanel();
-  });
 
   authPanelRoot.querySelector("#show-signup")?.addEventListener("click", () => {
     authMode = "signup";
