@@ -105,9 +105,6 @@ function bindSharedEvents() {
     gigNoteForm.addEventListener("submit", (event) => {
       event.preventDefault();
 
-      if (!requireAuthenticatedUser()) {
-        return;
-      }
       const formData = new FormData(gigNoteForm);
 
       state.gigNotes.unshift({
@@ -134,9 +131,6 @@ if (practiceForm) {
   practiceForm.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    if (!requireAuthenticatedUser()) {
-      return;
-    }
     const formData = new FormData(practiceForm);
     const type = normalizeEventType(formData.get("type"));
     const customLabel = type === "other" ? formData.get("otherLabel").trim() : "";
@@ -170,9 +164,6 @@ if (practiceForm) {
     stageItemForm.addEventListener("submit", (event) => {
       event.preventDefault();
 
-      if (!requireAuthenticatedUser()) {
-        return;
-      }
       const formData = new FormData(stageItemForm);
       const type = formData.get("type");
 
@@ -197,7 +188,7 @@ if (practiceForm) {
 
   if (clearStageItemButton) {
     clearStageItemButton.addEventListener("click", () => {
-      if (!requireAuthenticatedUser() || !selectedStageItemId) {
+      if (!selectedStageItemId) {
         return;
       }
 
@@ -210,9 +201,6 @@ if (practiceForm) {
 
   if (printStageButton) {
     printStageButton.addEventListener("click", () => {
-      if (!requireAuthenticatedUser()) {
-        return;
-      }
 
       printStagePlot();
     });
@@ -288,26 +276,17 @@ if (practiceForm) {
 
 function bindSetlistManagerEvents() {
   addSongButton.addEventListener("click", () => {
-    if (!requireAuthenticatedUser()) {
-      return;
-    }
 
     const nextInput = appendSongField();
     nextInput.focus();
   });
 
   cancelEditButton.addEventListener("click", () => {
-    if (!requireAuthenticatedUser()) {
-      return;
-    }
 
     clearSetlistEditor();
   });
 
   printSetlistButton.addEventListener("click", () => {
-    if (!requireAuthenticatedUser()) {
-      return;
-    }
 
     const setlist = getSelectedSetlist();
     if (setlist) {
@@ -316,9 +295,6 @@ function bindSetlistManagerEvents() {
   });
 
   deleteSetlistButton.addEventListener("click", () => {
-    if (!requireAuthenticatedUser()) {
-      return;
-    }
 
     const setlist = getSelectedSetlist();
     if (!setlist) {
@@ -339,9 +315,6 @@ function bindSetlistManagerEvents() {
   });
 
   setDefaultButton.addEventListener("click", () => {
-    if (!requireAuthenticatedUser()) {
-      return;
-    }
 
     const setlist = getSelectedSetlist();
     if (!setlist) {
@@ -357,9 +330,6 @@ function bindSetlistManagerEvents() {
   setlistForm.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    if (!requireAuthenticatedUser()) {
-      return;
-    }
     const formData = new FormData(setlistForm);
     const songs = formData
       .getAll(songInputName)
@@ -425,15 +395,6 @@ function renderDashboardDefaultSetlist() {
     return;
   }
 
-  if (!currentUser) {
-    dashboardDefaultSetlistRoot.className = "selected-card empty-state";
-    dashboardDefaultSetlistRoot.innerHTML = "<p>Log in to view and save your personal setlists.</p>";
-    if (dashboardPrintSetlistButton) {
-      dashboardPrintSetlistButton.disabled = true;
-    }
-    return;
-  }
-
   const setlist = getDefaultSetlist();
   dashboardDefaultSetlistRoot.innerHTML = "";
 
@@ -467,11 +428,6 @@ function renderSetlists() {
 
   setlistsRoot.innerHTML = "";
 
-  if (!currentUser) {
-    setlistsRoot.innerHTML = '<article class="empty-state"><p>Log in to create and keep your own saved setlists.</p></article>';
-    return;
-  }
-
   if (state.setlists.length === 0) {
     setlistsRoot.append(emptyStateTemplate.content.cloneNode(true));
     return;
@@ -500,15 +456,6 @@ function renderSetlists() {
 
 function renderSelectedSetlist() {
   if (!selectedSetlistRoot) {
-    return;
-  }
-
-  if (!currentUser) {
-    printSetlistButton.disabled = true;
-    deleteSetlistButton.disabled = true;
-    setDefaultButton.disabled = true;
-    selectedSetlistRoot.className = "selected-card empty-state";
-    selectedSetlistRoot.innerHTML = "<p>Log in to edit, print, or choose a default setlist.</p>";
     return;
   }
 
@@ -542,11 +489,6 @@ function renderGigNotes() {
 
   gigNotesRoot.innerHTML = "";
 
-  if (!currentUser) {
-    gigNotesRoot.innerHTML = '<article class="empty-state"><p>Log in to keep notes tied to your account on this device.</p></article>';
-    return;
-  }
-
   if (state.gigNotes.length === 0) {
     gigNotesRoot.append(emptyStateTemplate.content.cloneNode(true));
     return;
@@ -569,11 +511,6 @@ function renderPractices() {
   }
 
   practicesRoot.innerHTML = "";
-
-  if (!currentUser) {
-    practicesRoot.innerHTML = '<article class="empty-state"><p>Log in to save your schedule.</p></article>';
-    return;
-  }
 
   if (state.practices.length === 0) {
     practicesRoot.append(emptyStateTemplate.content.cloneNode(true));
@@ -600,14 +537,6 @@ function renderCalendar() {
   }
 
   calendarMonthsRoot.innerHTML = "";
-
-  if (!currentUser) {
-    const emptyState = document.createElement("article");
-    emptyState.className = "empty-state";
-    emptyState.innerHTML = "<p>Log in to see your saved calendar events.</p>";
-    calendarMonthsRoot.append(emptyState);
-    return;
-  }
 
   const practiceMonths = groupPracticesByMonth();
   const allSessions = practiceMonths.flatMap(({ sessions }) => sessions);
@@ -719,12 +648,6 @@ function renderCalendarEventDetail() {
     return;
   }
 
-  if (!currentUser) {
-    calendarEventDetailRoot.className = "calendar-detail empty-state";
-    calendarEventDetailRoot.innerHTML = "<p>Log in to inspect your saved events.</p>";
-    return;
-  }
-
   const session = state.practices.find((entry) => entry.id === selectedCalendarEventId) ?? null;
 
   if (!session) {
@@ -784,14 +707,6 @@ function bindCalendarEvents() {
 
 function renderStage() {
   if (!stageCanvas) {
-    return;
-  }
-
-  if (!currentUser) {
-    if (clearStageItemButton) {
-      clearStageItemButton.disabled = true;
-    }
-    stageCanvas.innerHTML = '<article class="empty-state"><p>Log in to save your stage plot.</p></article>';
     return;
   }
 
@@ -1116,7 +1031,7 @@ function printSetlist(setlist) {
 
 function loadState() {
   if (!currentUser) {
-    return hydrateState(null);
+    return loadLegacyState() ?? hydrateState(null);
   }
 
   const userStates = loadUserStates();
@@ -1269,6 +1184,7 @@ function setCurrentUserSession(userId) {
 
 function persist() {
   if (!currentUser) {
+    localStorage.setItem(legacyStorageKey, JSON.stringify(state));
     return;
   }
 
@@ -1287,15 +1203,7 @@ function syncSetlistSelection() {
 }
 
 function requireAuthenticatedUser() {
-  if (currentUser) {
-    return true;
-  }
-
-  authMode = "login";
-  setAuthMessage("Log in or create an account to save personal data.", "info");
-  renderAuthPanel();
-  authPanelRoot?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  return false;
+  return true;
 }
 
 function setAuthMessage(message, type = "info") {
@@ -1306,10 +1214,6 @@ function setAuthMessage(message, type = "info") {
 function syncAppShell() {
   document.body.classList.toggle("is-authenticated", Boolean(currentUser));
   document.body.classList.toggle("is-guest", !currentUser);
-
-  if (dashboardRoot) {
-    dashboardRoot.classList.toggle("app-locked", !currentUser);
-  }
 }
 
 function renderAuthPanel() {
@@ -1328,8 +1232,6 @@ function renderAuthPanel() {
         </div>
       </div>
       <div class="auth-summary">
-        <p class="auth-meta">Signed in as ${escapeHtml(currentUser.email)}</p>
-        <p class="auth-panel-copy">Your setlists, schedule, notes, and stage plot now save under this account on this device.</p>
         <div class="account-actions">
           <button id="auth-logout" type="button" class="secondary-button">Log out</button>
         </div>
@@ -1349,7 +1251,7 @@ function renderAuthPanel() {
   authPanelRoot.innerHTML = `
     <div class="auth-header">
       <div>
-        <p class="hero-label">Account Access</p>
+        <p class="hero-label">Optional Account</p>
         <h2>${isLogin ? "Log in" : "Sign up"}</h2>
       </div>
       <div class="auth-toggle-row" role="tablist" aria-label="Authentication mode">
@@ -1357,7 +1259,7 @@ function renderAuthPanel() {
         <button id="show-signup" type="button" class="auth-toggle${!isLogin ? " is-active" : ""}">Sign up</button>
       </div>
     </div>
-    <p class="auth-panel-copy">Create an account to keep your own custom Gig Monkey data separate from everyone else using this browser.</p>
+    <p class="auth-panel-copy">You can use Gig Monkey without an account. Create one if you want a separate saved profile on this browser.</p>
     ${feedbackMarkup}
     ${isLogin ? `
       <form id="auth-login-form" class="auth-form">
@@ -1371,7 +1273,7 @@ function renderAuthPanel() {
         </label>
         <button type="submit">Log in</button>
       </form>
-      <p class="auth-lock-note">${hasAccounts ? "Use the account you already created on this browser." : "No account exists yet. Start with sign up."}</p>
+      <p class="auth-lock-note">${hasAccounts ? "Use an existing account if you want your own saved profile." : "No account exists yet. You can still keep using the app as a guest."}</p>
     ` : `
       <form id="auth-signup-form" class="auth-form">
         <label>
@@ -1392,7 +1294,7 @@ function renderAuthPanel() {
         </label>
         <button type="submit">Create account</button>
       </form>
-      <p class="auth-lock-note">Accounts are stored locally in this browser for now, so use this as a first-pass login system.</p>
+      <p class="auth-lock-note">Accounts are stored locally in this browser for now, and guest mode still works without signing up.</p>
     `}
   `;
 
@@ -1495,7 +1397,7 @@ function handleSignup(event) {
 function handleLogout() {
   currentUser = null;
   setCurrentUserSession(null);
-  state = hydrateState(null);
+  state = loadState();
   selectedSetlistId = null;
   selectedStageItemId = null;
   selectedCalendarEventId = null;
