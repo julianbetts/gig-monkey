@@ -2,12 +2,17 @@ const legacyStorageKey = "gig-monkey-state";
 const authStorageKey = "gig-monkey-auth";
 const sessionStorageKey = "gig-monkey-session";
 const userStatesStorageKey = "gig-monkey-user-states";
+const pendingMigrationStorageKey = "gig-monkey-pending-migration";
 const songInputName = "song";
 
+const supabaseConfig = window.GIG_MONKEY_SUPABASE_CONFIG ?? {};
 const defaultStageItems = [];
 
 function createDefaultState() {
   return {
+    profile: {
+      displayName: "",
+    },
     setlists: [
       {
         id: crypto.randomUUID(),
@@ -29,8 +34,9 @@ function createDefaultState() {
   };
 }
 
-let currentUser = loadCurrentUser();
-let state = loadState();
+let supabaseClient = null;
+let currentUser = null;
+let state = hydrateState(loadGuestStateSnapshot());
 let dragState = null;
 let selectedSetlistId = null;
 let selectedStageItemId = null;
@@ -39,8 +45,14 @@ let selectedCalendarMonthKey = null;
 let authMode = "login";
 let authMessage = "";
 let authMessageType = "info";
-
-syncSetlistSelection();
+let isAuthBusy = false;
+let isInitializing = true;
+let setlistEventsBound = false;
+let syncStatus = "guest";
+let syncMessage = "Guest mode keeps data on this device.";
+let saveQueue = Promise.resolve();
+let saveRevision = 0;
+let loadedWorkspaceUserId = null;
 
 const page = document.body.dataset.page || "dashboard";
 
@@ -80,25 +92,188 @@ const emptyStateTemplate = document.querySelector("#empty-state-template");
 
 bindSharedEvents();
 bindCalendarEvents();
-renderAuthPanel();
-syncAppShell();
 
-if (page === "dashboard") {
-  if (dashboardPrintSetlistButton) {
-    dashboardPrintSetlistButton.addEventListener("click", () => {
-      const setlist = getDefaultSetlist();
-      if (setlist) {
-        printSetlist(setlist);
-      }
-    });
-  }
-
-  renderDashboard();
+if (dashboardPrintSetlistButton) {
+  dashboardPrintSetlistButton.addEventListener("click", () => {
+    const setlist = getDefaultSetlist();
+    if (setlist) {
+      printSetlist(setlist);
+    }
+  });
 }
 
-if (page === "setlists") {
-  bindSetlistManagerEvents();
-  renderSetlistsPage();
+renderAuthPanel();
+syncAppShell();
+renderCurrentPage();
+void initializeApp();
+
+async function initializeApp() {
+  supabaseClient = createSupabaseClient();
+  bindSupabaseAuthEvents();
+
+  if (!supabaseClient) {
+    isInitializing = false;
+    syncStatus = "guest";
+    syncMessage = "Add Supabase credentials to enable cloud accounts.";
+    renderAuthPanel();
+    syncAppShell();
+    renderCurrentPage();
+    return;
+  }
+
+  try {
+    const {
+      data: { session },
+      error,
+    } = await supabaseClient.auth.getSession();
+
+    if (error) {
+      throw error;
+    }
+
+    if (session?.user) {
+      await activateAuthenticatedUser(session.user, {
+        successMessage: "Welcome back. Your cloud workspace is ready.",
+        skipSuccessIfSameUser: true,
+      });
+    } else {
+      activateGuestMode();
+    }
+  } catch (error) {
+    console.error("Unable to restore Supabase session", error);
+    activateGuestMode();
+    setAuthMessage("Guest mode is available, but we could not restore your cloud session.", "error");
+  } finally {
+    isInitializing = false;
+    renderAuthPanel();
+    syncAppShell();
+    renderCurrentPage();
+  }
+}
+
+function createSupabaseClient() {
+  const url = typeof supabaseConfig.url === "string" ? supabaseConfig.url.trim() : "";
+  const anonKey = typeof supabaseConfig.anonKey === "string" ? supabaseConfig.anonKey.trim() : "";
+  const createClient = window.supabase?.createClient;
+
+  if (!url || !anonKey || typeof createClient !== "function") {
+    return null;
+  }
+
+  return createClient(url, anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+}
+
+function bindSupabaseAuthEvents() {
+  if (!supabaseClient) {
+    return;
+  }
+
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (isInitializing || isAuthBusy) {
+      return;
+    }
+
+    if (event === "SIGNED_OUT") {
+      activateGuestMode({
+        authFeedback: ["You logged out. Guest mode is still available on this device.", "info"],
+      });
+      return;
+    }
+
+    if (!session?.user) {
+      return;
+    }
+
+    if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED")
+      && session.user.id !== loadedWorkspaceUserId) {
+      void activateAuthenticatedUser(session.user, {
+        skipSuccessIfSameUser: true,
+      });
+    }
+  });
+}
+
+async function activateAuthenticatedUser(user, options = {}) {
+  const nextUser = mapSupabaseUser(user);
+  const isSameUser = currentUser?.id === nextUser.id && loadedWorkspaceUserId === nextUser.id;
+
+  currentUser = nextUser;
+  isAuthBusy = true;
+  syncStatus = "syncing";
+  syncMessage = "Loading your cloud workspace...";
+  renderAuthPanel();
+  syncAppShell();
+
+  try {
+    const remoteState = await fetchRemoteState();
+
+    if (remoteState) {
+      state = hydrateState(remoteState);
+      clearPendingMigrationState();
+      syncStatus = "saved";
+      syncMessage = "Cloud sync is active.";
+    } else {
+      const migrationState = loadPendingMigrationState() ?? loadPreferredMigrationSource();
+      state = hydrateState(migrationState);
+      await saveRemoteState(state);
+      clearPendingMigrationState();
+      syncStatus = "saved";
+      syncMessage = migrationState
+        ? "Local data was copied into your cloud account."
+        : "Your new cloud workspace is ready.";
+    }
+
+    loadedWorkspaceUserId = nextUser.id;
+    syncSetlistSelection();
+    selectedStageItemId = null;
+    selectedCalendarEventId = null;
+
+    if (options.successMessage && !(options.skipSuccessIfSameUser && isSameUser)) {
+      setAuthMessage(options.successMessage, "success");
+    }
+  } catch (error) {
+    console.error("Unable to load cloud workspace", error);
+    state = hydrateState(createDefaultState());
+    syncSetlistSelection();
+    syncStatus = "error";
+    syncMessage = "Cloud sync failed to load. Check your Supabase setup.";
+    setAuthMessage("We signed you in, but could not load your cloud data yet.", "error");
+  } finally {
+    isAuthBusy = false;
+    renderAuthPanel();
+    syncAppShell();
+    renderCurrentPage();
+  }
+}
+
+function activateGuestMode(options = {}) {
+  currentUser = null;
+  loadedWorkspaceUserId = null;
+  state = hydrateState(loadGuestStateSnapshot());
+  syncSetlistSelection();
+  selectedSetlistId = state.defaultSetlistId ?? state.setlists[0]?.id ?? null;
+  selectedStageItemId = null;
+  selectedCalendarEventId = null;
+  selectedCalendarMonthKey = null;
+  syncStatus = supabaseClient ? "guest" : "setup";
+  syncMessage = supabaseClient
+    ? "Guest mode keeps data on this device."
+    : "Add Supabase credentials to enable cloud accounts.";
+  authMode = "login";
+
+  if (options.authFeedback) {
+    setAuthMessage(options.authFeedback[0], options.authFeedback[1]);
+  }
+
+  renderAuthPanel();
+  syncAppShell();
+  renderCurrentPage();
 }
 
 function bindSharedEvents() {
@@ -115,43 +290,44 @@ function bindSharedEvents() {
       });
 
       gigNoteForm.reset();
-      persist();
+      void persist();
       renderGigNotes();
     });
   }
 
-if (practiceForm) {
-  syncPracticeFormFields();
+  if (practiceForm) {
+    syncPracticeFormFields();
 
-  if (practiceTypeSelect) {
-    practiceTypeSelect.addEventListener("change", () => {
+    if (practiceTypeSelect) {
+      practiceTypeSelect.addEventListener("change", () => {
+        syncPracticeFormFields();
+      });
+    }
+
+    practiceForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const formData = new FormData(practiceForm);
+      const type = normalizeEventType(formData.get("type"));
+      const customLabel = type === "other" ? formData.get("otherLabel").trim() : "";
+
+      state.practices.unshift({
+        id: crypto.randomUUID(),
+        date: formData.get("date"),
+        time: formData.get("time"),
+        type,
+        customLabel,
+      });
+
+      practiceForm.reset();
+      practiceForm.elements.type.value = "rehearsal";
       syncPracticeFormFields();
+      void persist();
+      renderPractices();
+      renderCalendar();
+      renderCalendarEventDetail();
     });
   }
-
-  practiceForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-
-    const formData = new FormData(practiceForm);
-    const type = normalizeEventType(formData.get("type"));
-    const customLabel = type === "other" ? formData.get("otherLabel").trim() : "";
-
-    state.practices.unshift({
-      id: crypto.randomUUID(),
-      date: formData.get("date"),
-      time: formData.get("time"),
-      type,
-      customLabel,
-    });
-
-    practiceForm.reset();
-    practiceForm.elements.type.value = "rehearsal";
-    syncPracticeFormFields();
-    persist();
-    renderPractices();
-    renderCalendar();
-  });
-}
 
   if (stageItemForm) {
     updateStageFormFields();
@@ -167,7 +343,6 @@ if (practiceForm) {
 
       const formData = new FormData(stageItemForm);
       const type = formData.get("type");
-
       const id = crypto.randomUUID();
 
       state.stageItems.push({
@@ -182,7 +357,7 @@ if (practiceForm) {
       selectedStageItemId = id;
       stageItemForm.reset();
       updateStageFormFields();
-      persist();
+      void persist();
       renderStage();
     });
   }
@@ -195,14 +370,13 @@ if (practiceForm) {
 
       state.stageItems = state.stageItems.filter((item) => item.id !== selectedStageItemId);
       selectedStageItemId = null;
-      persist();
+      void persist();
       renderStage();
     });
   }
 
   if (printStageButton) {
     printStageButton.addEventListener("click", () => {
-
       printStagePlot();
     });
   }
@@ -262,7 +436,7 @@ if (practiceForm) {
       }
 
       dragState = null;
-      persist();
+      void persist();
     });
 
     stageCanvas.addEventListener("pointercancel", () => {
@@ -277,18 +451,15 @@ if (practiceForm) {
 
 function bindSetlistManagerEvents() {
   addSongButton.addEventListener("click", () => {
-
     const nextInput = appendSongField();
     nextInput.focus();
   });
 
   cancelEditButton.addEventListener("click", () => {
-
     clearSetlistEditor();
   });
 
   printSetlistButton.addEventListener("click", () => {
-
     const setlist = getSelectedSetlist();
     if (setlist) {
       printSetlist(setlist);
@@ -296,7 +467,6 @@ function bindSetlistManagerEvents() {
   });
 
   deleteSetlistButton.addEventListener("click", () => {
-
     const setlist = getSelectedSetlist();
     if (!setlist) {
       return;
@@ -310,22 +480,23 @@ function bindSetlistManagerEvents() {
 
     selectedSetlistId = state.defaultSetlistId ?? state.setlists[0]?.id ?? null;
     clearSetlistEditor();
-    persist();
+    void persist();
     renderSetlists();
     renderSelectedSetlist();
+    renderDashboardDefaultSetlist();
   });
 
   setDefaultButton.addEventListener("click", () => {
-
     const setlist = getSelectedSetlist();
     if (!setlist) {
       return;
     }
 
     state.defaultSetlistId = setlist.id;
-    persist();
+    void persist();
     renderSetlists();
     renderSelectedSetlist();
+    renderDashboardDefaultSetlist();
   });
 
   setlistForm.addEventListener("submit", (event) => {
@@ -368,9 +539,10 @@ function bindSetlistManagerEvents() {
 
     selectedSetlistId = payload.id;
     clearSetlistEditor();
-    persist();
+    void persist();
     renderSetlists();
     renderSelectedSetlist();
+    renderDashboardDefaultSetlist();
   });
 }
 
@@ -437,7 +609,6 @@ function renderSetlists() {
   state.setlists.forEach((setlist) => {
     const article = document.createElement("article");
     const isSelected = setlist.id === selectedSetlistId;
-    const isDefault = setlist.id === state.defaultSetlistId;
     const songCount = setlist.songs.length;
     const densityClass = songCount > 12 ? " has-lots-of-songs" : songCount > 9 ? " has-many-songs" : "";
 
@@ -1098,11 +1269,10 @@ function printSetlist(setlist) {
 
 function loadState() {
   if (!currentUser) {
-    return loadLegacyState() ?? hydrateState(null);
+    return loadGuestStateSnapshot() ?? hydrateState(null);
   }
 
-  const userStates = loadUserStates();
-  return hydrateState(userStates[currentUser.id]);
+  return hydrateState(createDefaultState());
 }
 
 function hydrateState(savedState) {
@@ -1110,6 +1280,7 @@ function hydrateState(savedState) {
 
   if (!savedState) {
     defaults.defaultSetlistId = defaults.setlists[0]?.id ?? null;
+    defaults.profile.displayName = currentUser?.name || "";
     return defaults;
   }
 
@@ -1117,6 +1288,10 @@ function hydrateState(savedState) {
     const nextState = {
       ...defaults,
       ...savedState,
+      profile: {
+        ...defaults.profile,
+        ...(savedState.profile && typeof savedState.profile === "object" ? savedState.profile : {}),
+      },
     };
     const isLegacyPractice = (session) =>
       session?.date === "2026-03-22" &&
@@ -1127,9 +1302,24 @@ function hydrateState(savedState) {
       nextState.setlists = structuredClone(defaults.setlists);
     }
 
+    nextState.setlists = nextState.setlists.map((setlist) => ({
+      id: typeof setlist.id === "string" && setlist.id ? setlist.id : crypto.randomUUID(),
+      name: typeof setlist.name === "string" ? setlist.name.trim() : "",
+      date: typeof setlist.date === "string" ? setlist.date : "",
+      songs: Array.isArray(setlist.songs)
+        ? setlist.songs.map((song) => String(song).trim()).filter(Boolean)
+        : [],
+    })).filter((setlist) => setlist.name);
+
     if (!Array.isArray(nextState.gigNotes)) {
       nextState.gigNotes = structuredClone(defaults.gigNotes);
     }
+
+    nextState.gigNotes = nextState.gigNotes.map((note) => ({
+      id: typeof note.id === "string" && note.id ? note.id : crypto.randomUUID(),
+      title: typeof note.title === "string" ? note.title.trim() : "",
+      details: typeof note.details === "string" ? note.details.trim() : "",
+    })).filter((note) => note.title && note.details);
 
     if (!Array.isArray(nextState.practices)) {
       nextState.practices = [];
@@ -1138,28 +1328,40 @@ function hydrateState(savedState) {
     nextState.practices = nextState.practices
       .filter((session) => !isLegacyPractice(session))
       .map((session) => ({
-        ...session,
+        id: typeof session.id === "string" && session.id ? session.id : crypto.randomUUID(),
+        date: typeof session.date === "string" ? session.date : "",
+        time: typeof session.time === "string" ? session.time : "",
         type: normalizeEventType(session.type),
         customLabel: typeof session.customLabel === "string" ? session.customLabel.trim() : "",
-      }));
+      }))
+      .filter((session) => session.date && session.time);
 
     if (!Array.isArray(nextState.stageItems)) {
       nextState.stageItems = structuredClone(defaultStageItems);
     }
 
     nextState.stageItems = nextState.stageItems.map((item) => ({
-      ...item,
-      role: item.type === "member" ? item.role || item.name : "",
-    }));
+      id: typeof item.id === "string" && item.id ? item.id : crypto.randomUUID(),
+      name: typeof item.name === "string" ? item.name.trim() : "",
+      role: item.type === "member" ? (item.role || item.name || "").trim() : "",
+      type: item.type === "gear" ? "gear" : "member",
+      x: Number.isFinite(Number(item.x)) ? clamp(Number(item.x), 0, 86) : 50,
+      y: Number.isFinite(Number(item.y)) ? clamp(Number(item.y), 0, 82) : 50,
+    })).filter((item) => item.name);
 
     if (!nextState.defaultSetlistId || !nextState.setlists.some((entry) => entry.id === nextState.defaultSetlistId)) {
       nextState.defaultSetlistId = nextState.setlists[0]?.id ?? null;
+    }
+
+    if (!nextState.profile.displayName) {
+      nextState.profile.displayName = currentUser?.name || "";
     }
 
     return nextState;
   } catch (error) {
     console.error("Unable to parse saved state", error);
     defaults.defaultSetlistId = defaults.setlists[0]?.id ?? null;
+    defaults.profile.displayName = currentUser?.name || "";
     return defaults;
   }
 }
@@ -1178,7 +1380,7 @@ function loadLegacyState() {
   }
 }
 
-function loadAuthState() {
+function loadDeprecatedLocalAuthState() {
   const saved = localStorage.getItem(authStorageKey);
 
   if (!saved) {
@@ -1197,7 +1399,7 @@ function loadAuthState() {
         : null,
     };
   } catch (error) {
-    console.error("Unable to parse auth state", error);
+    console.error("Unable to parse deprecated auth state", error);
     return {
       accounts: [],
       legacyClaimedByUserId: null,
@@ -1205,11 +1407,7 @@ function loadAuthState() {
   }
 }
 
-function persistAuthState(authState) {
-  localStorage.setItem(authStorageKey, JSON.stringify(authState));
-}
-
-function loadUserStates() {
+function loadDeprecatedUserStates() {
   const saved = localStorage.getItem(userStatesStorageKey);
 
   if (!saved) {
@@ -1220,44 +1418,178 @@ function loadUserStates() {
     const parsed = JSON.parse(saved);
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch (error) {
-    console.error("Unable to parse user states", error);
+    console.error("Unable to parse deprecated user states", error);
     return {};
   }
 }
 
-function persistUserStates(userStates) {
-  localStorage.setItem(userStatesStorageKey, JSON.stringify(userStates));
-}
-
-function loadCurrentUser() {
-  const authState = loadAuthState();
+function loadDeprecatedAccountStateSnapshot() {
+  const authState = loadDeprecatedLocalAuthState();
   const sessionUserId = localStorage.getItem(sessionStorageKey);
 
   if (!sessionUserId) {
     return null;
   }
 
-  return authState.accounts.find((account) => account.id === sessionUserId) ?? null;
+  const currentAccount = authState.accounts.find((account) => account.id === sessionUserId);
+  if (!currentAccount) {
+    return null;
+  }
+
+  const userStates = loadDeprecatedUserStates();
+  const snapshot = userStates[currentAccount.id];
+
+  if (!snapshot) {
+    return null;
+  }
+
+  const hydrated = hydrateState(snapshot);
+  hydrated.profile.displayName = currentAccount.name || hydrated.profile.displayName;
+  return hydrated;
 }
 
-function setCurrentUserSession(userId) {
-  if (userId) {
-    localStorage.setItem(sessionStorageKey, userId);
+function loadGuestStateSnapshot() {
+  return loadLegacyState() ?? loadDeprecatedAccountStateSnapshot() ?? hydrateState(null);
+}
+
+function persistGuestState(snapshot) {
+  localStorage.setItem(legacyStorageKey, JSON.stringify(snapshot));
+}
+
+function loadPendingMigrationState() {
+  const saved = localStorage.getItem(pendingMigrationStorageKey);
+
+  if (!saved) {
+    return null;
+  }
+
+  try {
+    return hydrateState(JSON.parse(saved));
+  } catch (error) {
+    console.error("Unable to parse pending migration state", error);
+    return null;
+  }
+}
+
+function persistPendingMigrationState(snapshot) {
+  localStorage.setItem(pendingMigrationStorageKey, JSON.stringify(snapshot));
+}
+
+function clearPendingMigrationState() {
+  localStorage.removeItem(pendingMigrationStorageKey);
+}
+
+function loadPreferredMigrationSource() {
+  return loadPendingMigrationState() ?? loadDeprecatedAccountStateSnapshot() ?? loadLegacyState();
+}
+
+async function fetchRemoteState() {
+  if (!supabaseClient || !currentUser) {
+    return null;
+  }
+
+  const { data, error } = await supabaseClient.rpc("get_user_workspace");
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const normalized = typeof data === "string" ? JSON.parse(data) : data;
+  return hydrateState(normalized);
+}
+
+async function saveRemoteState(snapshot) {
+  if (!supabaseClient || !currentUser) {
     return;
   }
 
-  localStorage.removeItem(sessionStorageKey);
+  const payload = createRemoteWorkspacePayload(snapshot);
+  const { error } = await supabaseClient.rpc("save_user_workspace", {
+    workspace: payload,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
+function createRemoteWorkspacePayload(snapshot) {
+  return {
+    profile: {
+      displayName: snapshot.profile?.displayName || currentUser?.name || "",
+    },
+    defaultSetlistId: snapshot.defaultSetlistId ?? null,
+    setlists: snapshot.setlists.map((setlist) => ({
+      id: setlist.id,
+      name: setlist.name,
+      date: setlist.date || null,
+      songs: setlist.songs,
+    })),
+    gigNotes: snapshot.gigNotes.map((note) => ({
+      id: note.id,
+      title: note.title,
+      details: note.details,
+    })),
+    practices: snapshot.practices.map((session) => ({
+      id: session.id,
+      date: session.date,
+      time: session.time,
+      type: normalizeEventType(session.type),
+      customLabel: session.customLabel || "",
+    })),
+    stageItems: snapshot.stageItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      role: item.role || "",
+      type: item.type,
+      x: item.x,
+      y: item.y,
+    })),
+  };
 }
 
 function persist() {
-  if (!currentUser) {
-    localStorage.setItem(legacyStorageKey, JSON.stringify(state));
-    return;
+  state.profile.displayName = currentUser?.name || state.profile.displayName || "";
+
+  if (!currentUser || !supabaseClient) {
+    persistGuestState(state);
+    syncStatus = supabaseClient ? "guest" : "setup";
+    syncMessage = supabaseClient
+      ? "Guest mode keeps data on this device."
+      : "Add Supabase credentials to enable cloud accounts.";
+    renderAuthPanel();
+    return Promise.resolve();
   }
 
-  const userStates = loadUserStates();
-  userStates[currentUser.id] = state;
-  persistUserStates(userStates);
+  const snapshot = hydrateState(structuredClone(state));
+  const revision = ++saveRevision;
+  syncStatus = "syncing";
+  syncMessage = "Saving changes to the cloud...";
+  renderAuthPanel();
+
+  saveQueue = saveQueue
+    .catch(() => undefined)
+    .then(async () => {
+      await saveRemoteState(snapshot);
+
+      if (revision === saveRevision) {
+        syncStatus = "saved";
+        syncMessage = "All changes saved to Supabase.";
+        renderAuthPanel();
+      }
+    })
+    .catch((error) => {
+      console.error("Unable to sync cloud workspace", error);
+      syncStatus = "error";
+      syncMessage = "Cloud sync failed. Your latest change is still in memory.";
+      setAuthMessage("We couldn't save to Supabase just now. Check your setup and try again.", "error");
+      renderAuthPanel();
+    });
+
+  return saveQueue;
 }
 
 function syncSetlistSelection() {
@@ -1265,12 +1597,11 @@ function syncSetlistSelection() {
 
   if (!state.defaultSetlistId && selectedSetlistId) {
     state.defaultSetlistId = selectedSetlistId;
-    persist();
   }
 }
 
 function requireAuthenticatedUser() {
-  return true;
+  return Boolean(currentUser);
 }
 
 function setAuthMessage(message, type = "info") {
@@ -1288,10 +1619,26 @@ function renderAuthPanel() {
     return;
   }
 
-  const authState = loadAuthState();
+  if (isInitializing) {
+    authPanelRoot.innerHTML = `
+      <div class="auth-header">
+        <div>
+          <p class="hero-label">Account</p>
+          <h2>Loading workspace</h2>
+        </div>
+      </div>
+      <p class="auth-meta">Checking for a saved cloud session and preparing guest mode.</p>
+    `;
+    return;
+  }
 
   if (currentUser) {
+    const feedbackMarkup = authMessage
+      ? `<div class="auth-feedback is-${escapeHtml(authMessageType)}">${escapeHtml(authMessage)}</div>`
+      : "";
+
     authPanelRoot.innerHTML = `
+      ${feedbackMarkup}
       <div class="auth-header">
         <div>
           <p class="hero-label">Account</p>
@@ -1299,13 +1646,16 @@ function renderAuthPanel() {
         </div>
       </div>
       <div class="auth-summary">
+        <p class="auth-meta">${escapeHtml(syncMessage)}</p>
         <div class="account-actions">
-          <button id="auth-logout" type="button" class="secondary-button">Log out</button>
+          <button id="auth-logout" type="button" class="secondary-button" ${isAuthBusy ? "disabled" : ""}>Log out</button>
         </div>
       </div>
     `;
 
-    authPanelRoot.querySelector("#auth-logout")?.addEventListener("click", handleLogout);
+    authPanelRoot.querySelector("#auth-logout")?.addEventListener("click", () => {
+      void handleLogout();
+    });
     return;
   }
 
@@ -1313,6 +1663,9 @@ function renderAuthPanel() {
   const feedbackMarkup = authMessage
     ? `<div class="auth-feedback is-${escapeHtml(authMessageType)}">${escapeHtml(authMessage)}</div>`
     : "";
+  const setupCopy = supabaseClient
+    ? "Guest mode still works without signing up. If you create an account, your local data can be copied into Supabase."
+    : "Guest mode works right now. Add Supabase credentials in supabase-config.js to enable account creation and cloud sync.";
 
   authPanelRoot.innerHTML = `
     ${feedbackMarkup}
@@ -1335,8 +1688,8 @@ function renderAuthPanel() {
           required
         />
         <div class="auth-form-actions">
-          <button type="submit">Log in</button>
-          <button id="show-signup" type="button" class="secondary-button">Sign up</button>
+          <button type="submit" ${isAuthBusy ? "disabled" : ""}>Log in</button>
+          <button id="show-signup" type="button" class="secondary-button" ${isAuthBusy ? "disabled" : ""}>Sign up</button>
         </div>
       </form>
     ` : `
@@ -1358,52 +1711,78 @@ function renderAuthPanel() {
           <input type="password" name="confirmPassword" autocomplete="new-password" minlength="6" required />
         </label>
         <div class="auth-form-actions auth-form-actions-single">
-          <button type="submit">Create account</button>
+          <button type="submit" ${isAuthBusy ? "disabled" : ""}>Create account</button>
         </div>
       </form>
-      <p class="auth-lock-note">Accounts are stored locally in this browser for now, and guest mode still works without signing up.</p>
+      <p class="auth-lock-note">${escapeHtml(setupCopy)}</p>
     `}
   `;
 
   authPanelRoot.querySelector("#show-signup")?.addEventListener("click", () => {
     authMode = "signup";
+    setAuthMessage("", "info");
     renderAuthPanel();
   });
 
-  authPanelRoot.querySelector("#auth-login-form")?.addEventListener("submit", handleLogin);
-  authPanelRoot.querySelector("#auth-signup-form")?.addEventListener("submit", handleSignup);
+  authPanelRoot.querySelector("#auth-login-form")?.addEventListener("submit", (event) => {
+    void handleLogin(event);
+  });
+  authPanelRoot.querySelector("#auth-signup-form")?.addEventListener("submit", (event) => {
+    void handleSignup(event);
+  });
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
 
-  const authState = loadAuthState();
-  const formData = new FormData(event.currentTarget);
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  const password = String(formData.get("password") || "");
-  const account = authState.accounts.find((entry) => entry.email === email);
-
-  if (!account || account.password !== password) {
-    setAuthMessage("We couldn't find an account with that email and password.", "error");
+  if (!supabaseClient) {
+    setAuthMessage("Add Supabase credentials before logging in.", "error");
     renderAuthPanel();
     return;
   }
 
-  currentUser = account;
-  setCurrentUserSession(account.id);
-  state = loadState();
-  syncSetlistSelection();
-  selectedStageItemId = null;
-  selectedCalendarEventId = null;
-  setAuthMessage("Welcome back. Your saved data is ready.", "success");
+  isAuthBusy = true;
   renderAuthPanel();
-  renderCurrentPage();
+
+  const formData = new FormData(event.currentTarget);
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "");
+
+  try {
+    const {
+      data: { user },
+      error,
+    } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    await activateAuthenticatedUser(user, {
+      successMessage: "Welcome back. Your saved data is ready.",
+    });
+  } catch (error) {
+    console.error("Unable to log in", error);
+    setAuthMessage(error.message || "We couldn't log you in with that email and password.", "error");
+    renderAuthPanel();
+  } finally {
+    isAuthBusy = false;
+    renderAuthPanel();
+  }
 }
 
-function handleSignup(event) {
+async function handleSignup(event) {
   event.preventDefault();
 
-  const authState = loadAuthState();
+  if (!supabaseClient) {
+    setAuthMessage("Add Supabase credentials before creating an account.", "error");
+    renderAuthPanel();
+    return;
+  }
+
   const formData = new FormData(event.currentTarget);
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
@@ -1416,57 +1795,78 @@ function handleSignup(event) {
     return;
   }
 
-  if (authState.accounts.some((account) => account.email === email)) {
-    setAuthMessage("That email already has an account on this browser. Try logging in instead.", "error");
-    authMode = "login";
+  const migrationState = loadPreferredMigrationSource();
+  if (migrationState) {
+    persistPendingMigrationState(migrationState);
+  }
+
+  isAuthBusy = true;
+  renderAuthPanel();
+
+  try {
+    const {
+      data: { session, user },
+      error,
+    } = await supabaseClient.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name,
+        },
+        emailRedirectTo: window.location.href.split("#")[0],
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (session?.user || user?.id) {
+      await activateAuthenticatedUser(session?.user ?? user, {
+        successMessage: "Account created. Your Gig Monkey workspace is now backed by Supabase.",
+      });
+    } else {
+      authMode = "login";
+      setAuthMessage("Account created. Check your email to confirm, then log in to finish copying your local data.", "success");
+    }
+  } catch (error) {
+    console.error("Unable to sign up", error);
+    setAuthMessage(error.message || "We couldn't create that account yet.", "error");
+  } finally {
+    isAuthBusy = false;
     renderAuthPanel();
+  }
+}
+
+async function handleLogout() {
+  if (!supabaseClient) {
+    activateGuestMode({
+      authFeedback: ["Guest mode is active on this device.", "info"],
+    });
     return;
   }
 
-  const account = {
-    id: crypto.randomUUID(),
-    name,
-    email,
-    password,
-  };
+  isAuthBusy = true;
+  renderAuthPanel();
 
-  authState.accounts.push(account);
-  persistAuthState(authState);
-
-  const userStates = loadUserStates();
-  if (!userStates[account.id]) {
-    const legacyState = !authState.legacyClaimedByUserId ? loadLegacyState() : null;
-    userStates[account.id] = legacyState ?? createDefaultState();
-    persistUserStates(userStates);
-
-    if (legacyState && !authState.legacyClaimedByUserId) {
-      authState.legacyClaimedByUserId = account.id;
-      persistAuthState(authState);
+  try {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      throw error;
     }
+
+    activateGuestMode({
+      authFeedback: ["You logged out. Log back in anytime to reach your cloud data.", "info"],
+    });
+  } catch (error) {
+    console.error("Unable to log out", error);
+    setAuthMessage(error.message || "We couldn't log you out right now.", "error");
+    renderAuthPanel();
+  } finally {
+    isAuthBusy = false;
+    renderAuthPanel();
   }
-
-  currentUser = account;
-  setCurrentUserSession(account.id);
-  state = hydrateState(userStates[account.id]);
-  syncSetlistSelection();
-  selectedStageItemId = null;
-  selectedCalendarEventId = null;
-  setAuthMessage("Account created. Your personal Gig Monkey workspace is ready.", "success");
-  renderAuthPanel();
-  renderCurrentPage();
-}
-
-function handleLogout() {
-  currentUser = null;
-  setCurrentUserSession(null);
-  state = loadState();
-  selectedSetlistId = null;
-  selectedStageItemId = null;
-  selectedCalendarEventId = null;
-  authMode = "login";
-  setAuthMessage("You logged out. Log back in to keep working with your saved data.", "info");
-  renderAuthPanel();
-  renderCurrentPage();
 }
 
 function renderCurrentPage() {
@@ -1476,8 +1876,20 @@ function renderCurrentPage() {
   }
 
   if (page === "setlists") {
+    if (setlistForm && !setlistEventsBound) {
+      bindSetlistManagerEvents();
+      setlistEventsBound = true;
+    }
     renderSetlistsPage();
   }
+}
+
+function mapSupabaseUser(user) {
+  return {
+    id: user.id,
+    email: user.email || "",
+    name: typeof user.user_metadata?.name === "string" ? user.user_metadata.name.trim() : "",
+  };
 }
 
 function formatDate(dateString) {
@@ -1538,8 +1950,7 @@ function getEventLabel(session) {
   return formatEventType(type);
 }
 
-function clamp
-(value, min, max) {
+function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
