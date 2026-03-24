@@ -35,6 +35,7 @@ let dragState = null;
 let selectedSetlistId = null;
 let selectedStageItemId = null;
 let selectedCalendarEventId = null;
+let selectedCalendarMonthKey = null;
 let authMode = "login";
 let authMessage = "";
 let authMessageType = "info";
@@ -549,6 +550,13 @@ function renderCalendar() {
     selectedCalendarEventId = allSessions[0].id;
   }
 
+  if (selectedCalendarEventId) {
+    const selectedSession = allSessions.find((session) => session.id === selectedCalendarEventId);
+    if (selectedSession) {
+      selectedCalendarMonthKey = getMonthKey(selectedSession.date);
+    }
+  }
+
   if (practiceMonths.length === 0) {
     const emptyState = document.createElement("article");
     emptyState.className = "empty-state";
@@ -557,90 +565,114 @@ function renderCalendar() {
     return;
   }
 
-  practiceMonths.forEach(({ key, sessions }) => {
-    const [year, month] = key.split("-").map(Number);
-    const card = document.createElement("article");
-    card.className = "calendar-card";
+  if (!selectedCalendarMonthKey || !practiceMonths.some(({ key }) => key === selectedCalendarMonthKey)) {
+    selectedCalendarMonthKey = getDefaultCalendarMonthKey(practiceMonths);
+  }
 
-    const heading = document.createElement("h3");
-    heading.textContent = new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+  const activeMonthIndex = practiceMonths.findIndex(({ key }) => key === selectedCalendarMonthKey);
+  const activeMonth = practiceMonths[activeMonthIndex] ?? practiceMonths[0];
+  const { key, sessions } = activeMonth;
+  const [year, month] = key.split("-").map(Number);
+  const card = document.createElement("article");
+  card.className = "calendar-card";
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "calendar-toolbar";
+  toolbar.innerHTML = `
+    <button
+      type="button"
+      class="ghost-button calendar-nav"
+      data-calendar-nav="prev"
+      ${activeMonthIndex <= 0 ? "disabled" : ""}
+    >
+      Previous
+    </button>
+    <h3>${escapeHtml(new Date(year, month - 1, 1).toLocaleDateString(undefined, {
       month: "long",
       year: "numeric",
-    });
-    card.append(heading);
+    }))}</h3>
+    <button
+      type="button"
+      class="ghost-button calendar-nav"
+      data-calendar-nav="next"
+      ${activeMonthIndex >= practiceMonths.length - 1 ? "disabled" : ""}
+    >
+      Next
+    </button>
+  `;
+  card.append(toolbar);
 
-    const weekdayRow = document.createElement("div");
-    weekdayRow.className = "calendar-weekdays";
-    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((day) => {
-      const label = document.createElement("span");
-      label.textContent = day;
-      weekdayRow.append(label);
-    });
-    card.append(weekdayRow);
-
-    const grid = document.createElement("div");
-    grid.className = "calendar-grid";
-
-    const firstDay = new Date(year, month - 1, 1).getDay();
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const sessionsByDay = sessions.reduce((map, session) => {
-      const day = new Date(`${session.date}T12:00:00`).getDate();
-      if (!map.has(day)) {
-        map.set(day, []);
-      }
-      map.get(day).push(session);
-      return map;
-    }, new Map());
-
-    for (let index = 0; index < firstDay; index += 1) {
-      const filler = document.createElement("div");
-      filler.className = "calendar-filler";
-      grid.append(filler);
-    }
-
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const dayCell = document.createElement("div");
-      const daySessions = (sessionsByDay.get(day) || []).sort((a, b) =>
-        `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)
-      );
-      const typeClass = daySessions.length > 0
-        ? ` has-events has-${normalizeEventType(daySessions[0].type)}`
-        : "";
-
-      dayCell.className = `calendar-day${typeClass}`;
-
-      const dayNumber = document.createElement("div");
-      dayNumber.className = "calendar-day-number";
-      dayNumber.textContent = String(day);
-      dayCell.append(dayNumber);
-
-      if (daySessions.length > 0) {
-        const events = document.createElement("div");
-        events.className = "calendar-events";
-
-        daySessions.forEach((session) => {
-          const type = normalizeEventType(session.type);
-          const eventCard = document.createElement("button");
-          eventCard.type = "button";
-          eventCard.className = `calendar-event is-${type}${session.id === selectedCalendarEventId ? " is-selected" : ""}`;
-          eventCard.dataset.eventId = session.id;
-          eventCard.setAttribute("aria-label", `${getEventLabel(session)} on ${formatDate(session.date)} at ${formatTime(session.time)}`);
-          eventCard.innerHTML = `
-            <span class="calendar-event-time">${escapeHtml(formatTime(session.time))}</span>
-            <span class="calendar-event-focus">${escapeHtml(getEventLabel(session))}</span>
-          `;
-          events.append(eventCard);
-        });
-
-        dayCell.append(events);
-      }
-
-      grid.append(dayCell);
-    }
-
-    card.append(grid);
-    calendarMonthsRoot.append(card);
+  const weekdayRow = document.createElement("div");
+  weekdayRow.className = "calendar-weekdays";
+  ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((day) => {
+    const label = document.createElement("span");
+    label.textContent = day;
+    weekdayRow.append(label);
   });
+  card.append(weekdayRow);
+
+  const grid = document.createElement("div");
+  grid.className = "calendar-grid";
+
+  const firstDay = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const sessionsByDay = sessions.reduce((map, session) => {
+    const day = new Date(`${session.date}T12:00:00`).getDate();
+    if (!map.has(day)) {
+      map.set(day, []);
+    }
+    map.get(day).push(session);
+    return map;
+  }, new Map());
+
+  for (let index = 0; index < firstDay; index += 1) {
+    const filler = document.createElement("div");
+    filler.className = "calendar-filler";
+    grid.append(filler);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dayCell = document.createElement("div");
+    const daySessions = (sessionsByDay.get(day) || []).sort((a, b) =>
+      `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)
+    );
+    const typeClass = daySessions.length > 0
+      ? ` has-events has-${normalizeEventType(daySessions[0].type)}`
+      : "";
+
+    dayCell.className = `calendar-day${typeClass}`;
+
+    const dayNumber = document.createElement("div");
+    dayNumber.className = "calendar-day-number";
+    dayNumber.textContent = String(day);
+    dayCell.append(dayNumber);
+
+    if (daySessions.length > 0) {
+      const events = document.createElement("div");
+      events.className = "calendar-events";
+
+      daySessions.forEach((session) => {
+        const type = normalizeEventType(session.type);
+        const eventCard = document.createElement("button");
+        eventCard.type = "button";
+        eventCard.className = `calendar-event is-${type}${session.id === selectedCalendarEventId ? " is-selected" : ""}`;
+        eventCard.dataset.eventId = session.id;
+        eventCard.setAttribute("aria-label", `${getEventLabel(session)} on ${formatDate(session.date)} at ${formatTime(session.time)}`);
+        eventCard.innerHTML = `
+          <span class="calendar-event-time">${escapeHtml(formatTime(session.time))}</span>
+          <span class="calendar-event-focus">${escapeHtml(getEventLabel(session))}</span>
+        `;
+        events.append(eventCard);
+      });
+
+      dayCell.append(events);
+    }
+
+    grid.append(dayCell);
+  }
+
+  card.append(grid);
+  calendarMonthsRoot.append(card);
 }
 
 function renderCalendarEventDetail() {
@@ -672,8 +704,7 @@ function groupPracticesByMonth() {
   const months = new Map();
 
   sessions.forEach((session) => {
-    const date = new Date(`${session.date}T12:00:00`);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const key = getMonthKey(session.date);
 
     if (!months.has(key)) {
       months.set(key, []);
@@ -688,18 +719,54 @@ function groupPracticesByMonth() {
   }));
 }
 
+function getMonthKey(dateString) {
+  const date = new Date(`${dateString}T12:00:00`);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getDefaultCalendarMonthKey(practiceMonths) {
+  const todayKey = getMonthKey(new Date().toISOString().slice(0, 10));
+  const currentMonth = practiceMonths.find(({ key }) => key === todayKey);
+
+  if (currentMonth) {
+    return currentMonth.key;
+  }
+
+  return practiceMonths[0]?.key ?? null;
+}
+
 function bindCalendarEvents() {
   if (!calendarMonthsRoot) {
     return;
   }
 
   calendarMonthsRoot.addEventListener("click", (event) => {
+    const navButton = event.target.closest("[data-calendar-nav]");
+    if (navButton) {
+      const practiceMonths = groupPracticesByMonth();
+      const activeIndex = practiceMonths.findIndex(({ key }) => key === selectedCalendarMonthKey);
+      const nextIndex = navButton.dataset.calendarNav === "prev"
+        ? activeIndex - 1
+        : activeIndex + 1;
+      const nextMonth = practiceMonths[nextIndex];
+
+      if (nextMonth) {
+        selectedCalendarMonthKey = nextMonth.key;
+        renderCalendar();
+      }
+      return;
+    }
+
     const eventCard = event.target.closest(".calendar-event");
     if (!eventCard) {
       return;
     }
 
     selectedCalendarEventId = eventCard.dataset.eventId;
+    const session = state.practices.find((entry) => entry.id === selectedCalendarEventId);
+    if (session) {
+      selectedCalendarMonthKey = getMonthKey(session.date);
+    }
     renderCalendar();
     renderCalendarEventDetail();
   });

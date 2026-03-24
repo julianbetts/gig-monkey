@@ -547,6 +547,23 @@ button:hover {
   font-size: 1.2rem;
 }
 
+.calendar-toolbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.calendar-toolbar h3 {
+  margin: 0;
+  text-align: center;
+}
+
+.calendar-nav {
+  min-width: 6.5rem;
+}
+
 .calendar-weekdays,
 .calendar-grid {
   display: grid;
