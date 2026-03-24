@@ -158,6 +158,117 @@ h2 {
   gap: 0.6rem;
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.auth-shell {
+  display: grid;
+  gap: 0.9rem;
+  align-self: start;
+}
+
+.auth-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+
+.auth-header h2 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+}
+
+.auth-shell label {
+  color: rgba(255, 246, 239, 0.82);
+}
+
+.auth-shell input {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.auth-panel-copy,
+.auth-meta,
+.auth-lock-note {
+  margin: 0;
+  color: rgba(255, 246, 239, 0.78);
+  line-height: 1.5;
+}
+
+.auth-toggle-row,
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.auth-toggle,
+.secondary-button {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff6ef;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+}
+
+.auth-toggle.is-active {
+  background: #fff6ef;
+  color: var(--ink);
+}
+
+.text-button {
+  background: transparent;
+  color: #fff6ef;
+  box-shadow: none;
+  padding: 0;
+}
+
+.auth-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.auth-form button {
+  width: 100%;
+}
+
+.auth-feedback {
+  border-radius: 16px;
+  padding: 0.8rem 0.9rem;
+  font-size: 0.92rem;
+  border: 1px solid transparent;
+}
+
+.auth-feedback.is-info {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff6ef;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.auth-feedback.is-success {
+  background: rgba(36, 128, 108, 0.2);
+  color: #effff9;
+  border-color: rgba(36, 128, 108, 0.42);
+}
+
+.auth-feedback.is-error {
+  background: rgba(216, 76, 47, 0.2);
+  color: #fff2ec;
+  border-color: rgba(216, 76, 47, 0.42);
+}
+
+.auth-summary {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dashboard.app-locked {
+  opacity: 0.42;
+  pointer-events: none;
+  filter: saturate(0.8);
+}
+
 .dashboard {
   display: grid;
   gap: 1rem;
@@ -278,6 +389,12 @@ button:hover {
   min-height: 180px;
 }
 
+#selected-setlist {
+  height: 22rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
 .dashboard-card {
   cursor: default;
 }
@@ -337,6 +454,32 @@ button:hover {
 .item-card {
   cursor: pointer;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+#setlists .item-card {
+  height: calc(238px + 2rem + 2px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#setlists .item-card h3 {
+  flex-shrink: 0;
+}
+
+#setlists .song-list {
+  flex: 1;
+  overflow: hidden;
+}
+
+#setlists .item-card.has-many-songs .song-list {
+  font-size: 0.88rem;
+  line-height: 1.3;
+}
+
+#setlists .item-card.has-lots-of-songs .song-list {
+  font-size: 0.78rem;
+  line-height: 1.15;
 }
 
 .item-card:hover {
@@ -639,6 +782,11 @@ button:hover {
     padding-top: 4rem;
   }
 
+  .auth-shell {
+    max-width: 27rem;
+    justify-self: end;
+  }
+
   .dashboard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -665,6 +813,20 @@ button:hover {
 }
 
 @media (max-width: 759px) {
+  .auth-header {
+    flex-direction: column;
+  }
+
+  .auth-toggle-row,
+  .account-actions {
+    width: 100%;
+  }
+
+  .auth-toggle,
+  .secondary-button {
+    flex: 1 1 0;
+  }
+
   .calendar-weekdays,
   .calendar-grid {
     gap: 0.35rem;

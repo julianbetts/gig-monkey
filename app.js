@@ -1,42 +1,50 @@
-const storageKey = "gig-monkey-state";
+const legacyStorageKey = "gig-monkey-state";
+const authStorageKey = "gig-monkey-auth";
+const sessionStorageKey = "gig-monkey-session";
+const userStatesStorageKey = "gig-monkey-user-states";
 const songInputName = "song";
 
 const defaultStageItems = [];
 
-const defaultState = {
-  setlists: [
-    {
-      id: crypto.randomUUID(),
-      name: "Warehouse Warm-Up",
-      date: "2026-03-26",
-      songs: ["Night Bus", "Static Hearts", "Alibi", "Last Exit"],
-    },
-  ],
-  gigNotes: [
-    {
-      id: crypto.randomUUID(),
-      title: "The Blue Room",
-      details: "Park in the alley after 5 PM. Soundcheck is at 6:15. Bring the DI box.",
-    },
-  ],
-  practices: [],
-  stageItems: defaultStageItems,
-  defaultSetlistId: null,
-};
+function createDefaultState() {
+  return {
+    setlists: [
+      {
+        id: crypto.randomUUID(),
+        name: "Warehouse Warm-Up",
+        date: "2026-03-26",
+        songs: ["Night Bus", "Static Hearts", "Alibi", "Last Exit"],
+      },
+    ],
+    gigNotes: [
+      {
+        id: crypto.randomUUID(),
+        title: "The Blue Room",
+        details: "Park in the alley after 5 PM. Soundcheck is at 6:15. Bring the DI box.",
+      },
+    ],
+    practices: [],
+    stageItems: structuredClone(defaultStageItems),
+    defaultSetlistId: null,
+  };
+}
 
-const state = loadState();
+let currentUser = loadCurrentUser();
+let state = loadState();
 let dragState = null;
-let selectedSetlistId = state.defaultSetlistId ?? state.setlists[0]?.id ?? null;
+let selectedSetlistId = null;
 let selectedStageItemId = null;
 let selectedCalendarEventId = null;
+let authMode = "login";
+let authMessage = "";
+let authMessageType = "info";
 
-if (!state.defaultSetlistId && selectedSetlistId) {
-  state.defaultSetlistId = selectedSetlistId;
-  persist();
-}
+syncSetlistSelection();
 
 const page = document.body.dataset.page || "dashboard";
 
+const authPanelRoot = document.querySelector("#auth-panel-root");
+const dashboardRoot = document.querySelector(".dashboard");
 const dashboardDefaultSetlistRoot = document.querySelector("#dashboard-default-setlist");
 const dashboardPrintSetlistButton = document.querySelector("#dashboard-print-setlist");
 const setlistForm = document.querySelector("#setlist-form");
@@ -71,6 +79,8 @@ const emptyStateTemplate = document.querySelector("#empty-state-template");
 
 bindSharedEvents();
 bindCalendarEvents();
+renderAuthPanel();
+syncAppShell();
 
 if (page === "dashboard") {
   if (dashboardPrintSetlistButton) {
@@ -94,6 +104,10 @@ function bindSharedEvents() {
   if (gigNoteForm) {
     gigNoteForm.addEventListener("submit", (event) => {
       event.preventDefault();
+
+      if (!requireAuthenticatedUser()) {
+        return;
+      }
       const formData = new FormData(gigNoteForm);
 
       state.gigNotes.unshift({
@@ -119,6 +133,10 @@ if (practiceForm) {
 
   practiceForm.addEventListener("submit", (event) => {
     event.preventDefault();
+
+    if (!requireAuthenticatedUser()) {
+      return;
+    }
     const formData = new FormData(practiceForm);
     const type = normalizeEventType(formData.get("type"));
     const customLabel = type === "other" ? formData.get("otherLabel").trim() : "";
@@ -151,6 +169,10 @@ if (practiceForm) {
 
     stageItemForm.addEventListener("submit", (event) => {
       event.preventDefault();
+
+      if (!requireAuthenticatedUser()) {
+        return;
+      }
       const formData = new FormData(stageItemForm);
       const type = formData.get("type");
 
@@ -175,7 +197,7 @@ if (practiceForm) {
 
   if (clearStageItemButton) {
     clearStageItemButton.addEventListener("click", () => {
-      if (!selectedStageItemId) {
+      if (!requireAuthenticatedUser() || !selectedStageItemId) {
         return;
       }
 
@@ -188,6 +210,10 @@ if (practiceForm) {
 
   if (printStageButton) {
     printStageButton.addEventListener("click", () => {
+      if (!requireAuthenticatedUser()) {
+        return;
+      }
+
       printStagePlot();
     });
   }
@@ -262,15 +288,27 @@ if (practiceForm) {
 
 function bindSetlistManagerEvents() {
   addSongButton.addEventListener("click", () => {
+    if (!requireAuthenticatedUser()) {
+      return;
+    }
+
     const nextInput = appendSongField();
     nextInput.focus();
   });
 
   cancelEditButton.addEventListener("click", () => {
+    if (!requireAuthenticatedUser()) {
+      return;
+    }
+
     clearSetlistEditor();
   });
 
   printSetlistButton.addEventListener("click", () => {
+    if (!requireAuthenticatedUser()) {
+      return;
+    }
+
     const setlist = getSelectedSetlist();
     if (setlist) {
       printSetlist(setlist);
@@ -278,6 +316,10 @@ function bindSetlistManagerEvents() {
   });
 
   deleteSetlistButton.addEventListener("click", () => {
+    if (!requireAuthenticatedUser()) {
+      return;
+    }
+
     const setlist = getSelectedSetlist();
     if (!setlist) {
       return;
@@ -297,6 +339,10 @@ function bindSetlistManagerEvents() {
   });
 
   setDefaultButton.addEventListener("click", () => {
+    if (!requireAuthenticatedUser()) {
+      return;
+    }
+
     const setlist = getSelectedSetlist();
     if (!setlist) {
       return;
@@ -310,6 +356,10 @@ function bindSetlistManagerEvents() {
 
   setlistForm.addEventListener("submit", (event) => {
     event.preventDefault();
+
+    if (!requireAuthenticatedUser()) {
+      return;
+    }
     const formData = new FormData(setlistForm);
     const songs = formData
       .getAll(songInputName)
@@ -354,6 +404,7 @@ function bindSetlistManagerEvents() {
 }
 
 function renderDashboard() {
+  syncAppShell();
   renderDashboardDefaultSetlist();
   renderGigNotes();
   renderPractices();
@@ -363,6 +414,7 @@ function renderDashboard() {
 }
 
 function renderSetlistsPage() {
+  syncAppShell();
   resetSongFields();
   renderSetlists();
   renderSelectedSetlist();
@@ -370,6 +422,15 @@ function renderSetlistsPage() {
 
 function renderDashboardDefaultSetlist() {
   if (!dashboardDefaultSetlistRoot) {
+    return;
+  }
+
+  if (!currentUser) {
+    dashboardDefaultSetlistRoot.className = "selected-card empty-state";
+    dashboardDefaultSetlistRoot.innerHTML = "<p>Log in to view and save your personal setlists.</p>";
+    if (dashboardPrintSetlistButton) {
+      dashboardPrintSetlistButton.disabled = true;
+    }
     return;
   }
 
@@ -406,6 +467,11 @@ function renderSetlists() {
 
   setlistsRoot.innerHTML = "";
 
+  if (!currentUser) {
+    setlistsRoot.innerHTML = '<article class="empty-state"><p>Log in to create and keep your own saved setlists.</p></article>';
+    return;
+  }
+
   if (state.setlists.length === 0) {
     setlistsRoot.append(emptyStateTemplate.content.cloneNode(true));
     return;
@@ -415,8 +481,10 @@ function renderSetlists() {
     const article = document.createElement("article");
     const isSelected = setlist.id === selectedSetlistId;
     const isDefault = setlist.id === state.defaultSetlistId;
+    const songCount = setlist.songs.length;
+    const densityClass = songCount > 12 ? " has-lots-of-songs" : songCount > 9 ? " has-many-songs" : "";
 
-    article.className = `item-card${isSelected ? " is-selected" : ""}`;
+    article.className = `item-card${isSelected ? " is-selected" : ""}${densityClass}`;
     article.innerHTML = `
       <h3>${escapeHtml(setlist.name)}</h3>
       <ol class="song-list">
@@ -432,6 +500,15 @@ function renderSetlists() {
 
 function renderSelectedSetlist() {
   if (!selectedSetlistRoot) {
+    return;
+  }
+
+  if (!currentUser) {
+    printSetlistButton.disabled = true;
+    deleteSetlistButton.disabled = true;
+    setDefaultButton.disabled = true;
+    selectedSetlistRoot.className = "selected-card empty-state";
+    selectedSetlistRoot.innerHTML = "<p>Log in to edit, print, or choose a default setlist.</p>";
     return;
   }
 
@@ -465,6 +542,11 @@ function renderGigNotes() {
 
   gigNotesRoot.innerHTML = "";
 
+  if (!currentUser) {
+    gigNotesRoot.innerHTML = '<article class="empty-state"><p>Log in to keep notes tied to your account on this device.</p></article>';
+    return;
+  }
+
   if (state.gigNotes.length === 0) {
     gigNotesRoot.append(emptyStateTemplate.content.cloneNode(true));
     return;
@@ -487,6 +569,11 @@ function renderPractices() {
   }
 
   practicesRoot.innerHTML = "";
+
+  if (!currentUser) {
+    practicesRoot.innerHTML = '<article class="empty-state"><p>Log in to save your schedule.</p></article>';
+    return;
+  }
 
   if (state.practices.length === 0) {
     practicesRoot.append(emptyStateTemplate.content.cloneNode(true));
@@ -513,6 +600,14 @@ function renderCalendar() {
   }
 
   calendarMonthsRoot.innerHTML = "";
+
+  if (!currentUser) {
+    const emptyState = document.createElement("article");
+    emptyState.className = "empty-state";
+    emptyState.innerHTML = "<p>Log in to see your saved calendar events.</p>";
+    calendarMonthsRoot.append(emptyState);
+    return;
+  }
 
   const practiceMonths = groupPracticesByMonth();
   const allSessions = practiceMonths.flatMap(({ sessions }) => sessions);
@@ -624,6 +719,12 @@ function renderCalendarEventDetail() {
     return;
   }
 
+  if (!currentUser) {
+    calendarEventDetailRoot.className = "calendar-detail empty-state";
+    calendarEventDetailRoot.innerHTML = "<p>Log in to inspect your saved events.</p>";
+    return;
+  }
+
   const session = state.practices.find((entry) => entry.id === selectedCalendarEventId) ?? null;
 
   if (!session) {
@@ -683,6 +784,14 @@ function bindCalendarEvents() {
 
 function renderStage() {
   if (!stageCanvas) {
+    return;
+  }
+
+  if (!currentUser) {
+    if (clearStageItemButton) {
+      clearStageItemButton.disabled = true;
+    }
+    stageCanvas.innerHTML = '<article class="empty-state"><p>Log in to save your stage plot.</p></article>';
     return;
   }
 
@@ -1006,19 +1115,26 @@ function printSetlist(setlist) {
 }
 
 function loadState() {
-  const saved = localStorage.getItem(storageKey);
+  if (!currentUser) {
+    return hydrateState(null);
+  }
 
-  if (!saved) {
-    const nextState = structuredClone(defaultState);
-    nextState.defaultSetlistId = nextState.setlists[0]?.id ?? null;
-    return nextState;
+  const userStates = loadUserStates();
+  return hydrateState(userStates[currentUser.id]);
+}
+
+function hydrateState(savedState) {
+  const defaults = createDefaultState();
+
+  if (!savedState) {
+    defaults.defaultSetlistId = defaults.setlists[0]?.id ?? null;
+    return defaults;
   }
 
   try {
-    const parsed = JSON.parse(saved);
     const nextState = {
-      ...structuredClone(defaultState),
-      ...parsed,
+      ...defaults,
+      ...savedState,
     };
     const isLegacyPractice = (session) =>
       session?.date === "2026-03-22" &&
@@ -1026,26 +1142,26 @@ function loadState() {
       session?.focus === "Tighten endings and transitions between songs 3 to 5.";
 
     if (!Array.isArray(nextState.setlists)) {
-      nextState.setlists = structuredClone(defaultState.setlists);
+      nextState.setlists = structuredClone(defaults.setlists);
     }
 
     if (!Array.isArray(nextState.gigNotes)) {
-      nextState.gigNotes = structuredClone(defaultState.gigNotes);
+      nextState.gigNotes = structuredClone(defaults.gigNotes);
     }
 
     if (!Array.isArray(nextState.practices)) {
-      nextState.practices = structuredClone(defaultState.practices);
+      nextState.practices = [];
     }
 
-nextState.practices = nextState.practices
-  .filter((session) => !isLegacyPractice(session))
-  .map((session) => ({
-    ...session,
-    type: normalizeEventType(session.type),
-    customLabel: typeof session.customLabel === "string" ? session.customLabel.trim() : "",
-  }));
+    nextState.practices = nextState.practices
+      .filter((session) => !isLegacyPractice(session))
+      .map((session) => ({
+        ...session,
+        type: normalizeEventType(session.type),
+        customLabel: typeof session.customLabel === "string" ? session.customLabel.trim() : "",
+      }));
 
-    if (!Array.isArray(nextState.stageItems) || nextState.stageItems.length === 0) {
+    if (!Array.isArray(nextState.stageItems)) {
       nextState.stageItems = structuredClone(defaultStageItems);
     }
 
@@ -1061,14 +1177,343 @@ nextState.practices = nextState.practices
     return nextState;
   } catch (error) {
     console.error("Unable to parse saved state", error);
-    const nextState = structuredClone(defaultState);
-    nextState.defaultSetlistId = nextState.setlists[0]?.id ?? null;
-    return nextState;
+    defaults.defaultSetlistId = defaults.setlists[0]?.id ?? null;
+    return defaults;
   }
 }
 
+function loadLegacyState() {
+  const saved = localStorage.getItem(legacyStorageKey);
+  if (!saved) {
+    return null;
+  }
+
+  try {
+    return hydrateState(JSON.parse(saved));
+  } catch (error) {
+    console.error("Unable to parse legacy state", error);
+    return null;
+  }
+}
+
+function loadAuthState() {
+  const saved = localStorage.getItem(authStorageKey);
+
+  if (!saved) {
+    return {
+      accounts: [],
+      legacyClaimedByUserId: null,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(saved);
+    return {
+      accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
+      legacyClaimedByUserId: typeof parsed.legacyClaimedByUserId === "string"
+        ? parsed.legacyClaimedByUserId
+        : null,
+    };
+  } catch (error) {
+    console.error("Unable to parse auth state", error);
+    return {
+      accounts: [],
+      legacyClaimedByUserId: null,
+    };
+  }
+}
+
+function persistAuthState(authState) {
+  localStorage.setItem(authStorageKey, JSON.stringify(authState));
+}
+
+function loadUserStates() {
+  const saved = localStorage.getItem(userStatesStorageKey);
+
+  if (!saved) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.error("Unable to parse user states", error);
+    return {};
+  }
+}
+
+function persistUserStates(userStates) {
+  localStorage.setItem(userStatesStorageKey, JSON.stringify(userStates));
+}
+
+function loadCurrentUser() {
+  const authState = loadAuthState();
+  const sessionUserId = localStorage.getItem(sessionStorageKey);
+
+  if (!sessionUserId) {
+    return null;
+  }
+
+  return authState.accounts.find((account) => account.id === sessionUserId) ?? null;
+}
+
+function setCurrentUserSession(userId) {
+  if (userId) {
+    localStorage.setItem(sessionStorageKey, userId);
+    return;
+  }
+
+  localStorage.removeItem(sessionStorageKey);
+}
+
 function persist() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+  if (!currentUser) {
+    return;
+  }
+
+  const userStates = loadUserStates();
+  userStates[currentUser.id] = state;
+  persistUserStates(userStates);
+}
+
+function syncSetlistSelection() {
+  selectedSetlistId = state.defaultSetlistId ?? state.setlists[0]?.id ?? null;
+
+  if (!state.defaultSetlistId && selectedSetlistId) {
+    state.defaultSetlistId = selectedSetlistId;
+    persist();
+  }
+}
+
+function requireAuthenticatedUser() {
+  if (currentUser) {
+    return true;
+  }
+
+  authMode = "login";
+  setAuthMessage("Log in or create an account to save personal data.", "info");
+  renderAuthPanel();
+  authPanelRoot?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  return false;
+}
+
+function setAuthMessage(message, type = "info") {
+  authMessage = message;
+  authMessageType = type;
+}
+
+function syncAppShell() {
+  document.body.classList.toggle("is-authenticated", Boolean(currentUser));
+  document.body.classList.toggle("is-guest", !currentUser);
+
+  if (dashboardRoot) {
+    dashboardRoot.classList.toggle("app-locked", !currentUser);
+  }
+}
+
+function renderAuthPanel() {
+  if (!authPanelRoot) {
+    return;
+  }
+
+  const authState = loadAuthState();
+
+  if (currentUser) {
+    authPanelRoot.innerHTML = `
+      <div class="auth-header">
+        <div>
+          <p class="hero-label">Account</p>
+          <h2>${escapeHtml(currentUser.name || currentUser.email)}</h2>
+        </div>
+      </div>
+      <div class="auth-summary">
+        <p class="auth-meta">Signed in as ${escapeHtml(currentUser.email)}</p>
+        <p class="auth-panel-copy">Your setlists, schedule, notes, and stage plot now save under this account on this device.</p>
+        <div class="account-actions">
+          <button id="auth-logout" type="button" class="secondary-button">Log out</button>
+        </div>
+      </div>
+    `;
+
+    authPanelRoot.querySelector("#auth-logout")?.addEventListener("click", handleLogout);
+    return;
+  }
+
+  const isLogin = authMode === "login";
+  const hasAccounts = authState.accounts.length > 0;
+  const feedbackMarkup = authMessage
+    ? `<div class="auth-feedback is-${escapeHtml(authMessageType)}">${escapeHtml(authMessage)}</div>`
+    : "";
+
+  authPanelRoot.innerHTML = `
+    <div class="auth-header">
+      <div>
+        <p class="hero-label">Account Access</p>
+        <h2>${isLogin ? "Log in" : "Sign up"}</h2>
+      </div>
+      <div class="auth-toggle-row" role="tablist" aria-label="Authentication mode">
+        <button id="show-login" type="button" class="auth-toggle${isLogin ? " is-active" : ""}">Log in</button>
+        <button id="show-signup" type="button" class="auth-toggle${!isLogin ? " is-active" : ""}">Sign up</button>
+      </div>
+    </div>
+    <p class="auth-panel-copy">Create an account to keep your own custom Gig Monkey data separate from everyone else using this browser.</p>
+    ${feedbackMarkup}
+    ${isLogin ? `
+      <form id="auth-login-form" class="auth-form">
+        <label>
+          Email
+          <input type="email" name="email" autocomplete="email" required />
+        </label>
+        <label>
+          Password
+          <input type="password" name="password" autocomplete="current-password" required />
+        </label>
+        <button type="submit">Log in</button>
+      </form>
+      <p class="auth-lock-note">${hasAccounts ? "Use the account you already created on this browser." : "No account exists yet. Start with sign up."}</p>
+    ` : `
+      <form id="auth-signup-form" class="auth-form">
+        <label>
+          Name
+          <input type="text" name="name" autocomplete="name" required />
+        </label>
+        <label>
+          Email
+          <input type="email" name="email" autocomplete="email" required />
+        </label>
+        <label>
+          Password
+          <input type="password" name="password" autocomplete="new-password" minlength="6" required />
+        </label>
+        <label>
+          Confirm password
+          <input type="password" name="confirmPassword" autocomplete="new-password" minlength="6" required />
+        </label>
+        <button type="submit">Create account</button>
+      </form>
+      <p class="auth-lock-note">Accounts are stored locally in this browser for now, so use this as a first-pass login system.</p>
+    `}
+  `;
+
+  authPanelRoot.querySelector("#show-login")?.addEventListener("click", () => {
+    authMode = "login";
+    renderAuthPanel();
+  });
+
+  authPanelRoot.querySelector("#show-signup")?.addEventListener("click", () => {
+    authMode = "signup";
+    renderAuthPanel();
+  });
+
+  authPanelRoot.querySelector("#auth-login-form")?.addEventListener("submit", handleLogin);
+  authPanelRoot.querySelector("#auth-signup-form")?.addEventListener("submit", handleSignup);
+}
+
+function handleLogin(event) {
+  event.preventDefault();
+
+  const authState = loadAuthState();
+  const formData = new FormData(event.currentTarget);
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "");
+  const account = authState.accounts.find((entry) => entry.email === email);
+
+  if (!account || account.password !== password) {
+    setAuthMessage("We couldn't find an account with that email and password.", "error");
+    renderAuthPanel();
+    return;
+  }
+
+  currentUser = account;
+  setCurrentUserSession(account.id);
+  state = loadState();
+  syncSetlistSelection();
+  selectedStageItemId = null;
+  selectedCalendarEventId = null;
+  setAuthMessage("Welcome back. Your saved data is ready.", "success");
+  renderAuthPanel();
+  renderCurrentPage();
+}
+
+function handleSignup(event) {
+  event.preventDefault();
+
+  const authState = loadAuthState();
+  const formData = new FormData(event.currentTarget);
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+
+  if (password !== confirmPassword) {
+    setAuthMessage("Passwords must match before we can create the account.", "error");
+    renderAuthPanel();
+    return;
+  }
+
+  if (authState.accounts.some((account) => account.email === email)) {
+    setAuthMessage("That email already has an account on this browser. Try logging in instead.", "error");
+    authMode = "login";
+    renderAuthPanel();
+    return;
+  }
+
+  const account = {
+    id: crypto.randomUUID(),
+    name,
+    email,
+    password,
+  };
+
+  authState.accounts.push(account);
+  persistAuthState(authState);
+
+  const userStates = loadUserStates();
+  if (!userStates[account.id]) {
+    const legacyState = !authState.legacyClaimedByUserId ? loadLegacyState() : null;
+    userStates[account.id] = legacyState ?? createDefaultState();
+    persistUserStates(userStates);
+
+    if (legacyState && !authState.legacyClaimedByUserId) {
+      authState.legacyClaimedByUserId = account.id;
+      persistAuthState(authState);
+    }
+  }
+
+  currentUser = account;
+  setCurrentUserSession(account.id);
+  state = hydrateState(userStates[account.id]);
+  syncSetlistSelection();
+  selectedStageItemId = null;
+  selectedCalendarEventId = null;
+  setAuthMessage("Account created. Your personal Gig Monkey workspace is ready.", "success");
+  renderAuthPanel();
+  renderCurrentPage();
+}
+
+function handleLogout() {
+  currentUser = null;
+  setCurrentUserSession(null);
+  state = hydrateState(null);
+  selectedSetlistId = null;
+  selectedStageItemId = null;
+  selectedCalendarEventId = null;
+  authMode = "login";
+  setAuthMessage("You logged out. Log back in to keep working with your saved data.", "info");
+  renderAuthPanel();
+  renderCurrentPage();
+}
+
+function renderCurrentPage() {
+  if (page === "dashboard") {
+    renderDashboard();
+    return;
+  }
+
+  if (page === "setlists") {
+    renderSetlistsPage();
+  }
 }
 
 function formatDate(dateString) {
@@ -1135,7 +1580,7 @@ function clamp
 }
 
 function escapeHtml(value) {
-  return value
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
