@@ -35,7 +35,7 @@ let selectedSetlistId = null;
 let selectedStageItemId = null;
 let selectedCalendarEventId = null;
 let selectedCalendarMonthKey = null;
-let authMode = "login";
+let authMode = "launcher";
 let authMessage = "";
 let authMessageType = "info";
 let isAuthBusy = false;
@@ -68,6 +68,8 @@ const practiceForm = document.querySelector("#practice-form");
 const practiceTypeSelect = document.querySelector('#practice-form select[name="type"]');
 const practiceOtherLabel = document.querySelector("#practice-other-label");
 const practiceOtherInput = document.querySelector('#practice-form input[name="otherLabel"]');
+const practiceSaveButton = document.querySelector("#save-practice-event");
+const cancelPracticeEditButton = document.querySelector("#cancel-practice-edit");
 const stageItemForm = document.querySelector("#stage-item-form");
 const stageTypeSelect = document.querySelector('#stage-item-form select[name="type"]');
 const stageRoleGroup = document.querySelector("#stage-role-group");
@@ -263,7 +265,7 @@ function activateGuestMode(options = {}) {
   syncMessage = supabaseClient
     ? "Guest mode keeps data on this device."
     : "Add Supabase credentials to enable cloud accounts.";
-  authMode = "login";
+  authMode = "launcher";
 
   if (options.authFeedback) {
     setAuthMessage(options.authFeedback[0], options.authFeedback[1]);
@@ -308,22 +310,33 @@ function bindSharedEvents() {
       const formData = new FormData(practiceForm);
       const type = normalizeEventType(formData.get("type"));
       const customLabel = type === "other" ? formData.get("otherLabel").trim() : "";
-
-      state.practices.unshift({
-        id: crypto.randomUUID(),
+      const existingId = String(formData.get("eventId") || "");
+      const payload = {
+        id: existingId || crypto.randomUUID(),
         date: formData.get("date"),
         time: formData.get("time"),
         type,
         customLabel,
-      });
+      };
 
-      practiceForm.reset();
-      practiceForm.elements.type.value = "rehearsal";
-      syncPracticeFormFields();
+      if (existingId) {
+        state.practices = state.practices.map((entry) =>
+          entry.id === existingId ? payload : entry
+        );
+      } else {
+        state.practices.unshift(payload);
+      }
+
+      selectedCalendarEventId = payload.id;
+      clearPracticeEditor();
       void persist();
       renderPractices();
       renderCalendar();
       renderCalendarEventDetail();
+    });
+
+    cancelPracticeEditButton?.addEventListener("click", () => {
+      clearPracticeEditor();
     });
   }
 
@@ -711,8 +724,9 @@ function renderCalendar() {
 
   calendarMonthsRoot.innerHTML = "";
 
-  const practiceMonths = groupPracticesByMonth();
-  const allSessions = practiceMonths.flatMap(({ sessions }) => sessions);
+  const allSessions = state.practices
+    .slice()
+    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
 
   if (selectedCalendarEventId && !allSessions.some((session) => session.id === selectedCalendarEventId)) {
     selectedCalendarEventId = null;
@@ -729,21 +743,12 @@ function renderCalendar() {
     }
   }
 
-  if (practiceMonths.length === 0) {
-    const emptyState = document.createElement("article");
-    emptyState.className = "empty-state";
-    emptyState.innerHTML = "<p>No practice dates yet. Add a session above and it will appear here.</p>";
-    calendarMonthsRoot.append(emptyState);
-    return;
+  if (!selectedCalendarMonthKey) {
+    selectedCalendarMonthKey = getDefaultCalendarMonthKey();
   }
 
-  if (!selectedCalendarMonthKey || !practiceMonths.some(({ key }) => key === selectedCalendarMonthKey)) {
-    selectedCalendarMonthKey = getDefaultCalendarMonthKey(practiceMonths);
-  }
-
-  const activeMonthIndex = practiceMonths.findIndex(({ key }) => key === selectedCalendarMonthKey);
-  const activeMonth = practiceMonths[activeMonthIndex] ?? practiceMonths[0];
-  const { key, sessions } = activeMonth;
+  const key = selectedCalendarMonthKey;
+  const sessions = allSessions.filter((session) => getMonthKey(session.date) === key);
   const [year, month] = key.split("-").map(Number);
   const card = document.createElement("article");
   card.className = "calendar-card";
@@ -755,7 +760,6 @@ function renderCalendar() {
       type="button"
       class="ghost-button calendar-nav"
       data-calendar-nav="prev"
-      ${activeMonthIndex <= 0 ? "disabled" : ""}
     >
       Previous
     </button>
@@ -767,7 +771,6 @@ function renderCalendar() {
       type="button"
       class="ghost-button calendar-nav"
       data-calendar-nav="next"
-      ${activeMonthIndex >= practiceMonths.length - 1 ? "disabled" : ""}
     >
       Next
     </button>
@@ -865,7 +868,19 @@ function renderCalendarEventDetail() {
     <p class="meta">${formatDate(session.date)} at ${formatTime(session.time)}</p>
     <h3>${escapeHtml(getEventLabel(session))}</h3>
     <p class="detail-copy">${escapeHtml(formatEventType(normalizeEventType(session.type)))}</p>
+    <div class="calendar-detail-actions">
+      <button id="edit-calendar-event" type="button">Edit</button>
+      <button id="delete-calendar-event" type="button">Delete</button>
+    </div>
   `;
+
+  calendarEventDetailRoot.querySelector("#edit-calendar-event")?.addEventListener("click", () => {
+    populatePracticeEditor(session);
+  });
+
+  calendarEventDetailRoot.querySelector("#delete-calendar-event")?.addEventListener("click", () => {
+    deletePracticeEvent(session.id);
+  });
 }
 
 function groupPracticesByMonth() {
@@ -896,15 +911,14 @@ function getMonthKey(dateString) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function getDefaultCalendarMonthKey(practiceMonths) {
-  const todayKey = getMonthKey(new Date().toISOString().slice(0, 10));
-  const currentMonth = practiceMonths.find(({ key }) => key === todayKey);
+function getDefaultCalendarMonthKey() {
+  return getMonthKey(new Date().toISOString().slice(0, 10));
+}
 
-  if (currentMonth) {
-    return currentMonth.key;
-  }
-
-  return practiceMonths[0]?.key ?? null;
+function shiftMonthKey(monthKey, direction) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const nextDate = new Date(year, month - 1 + direction, 1);
+  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function bindCalendarEvents() {
@@ -915,17 +929,9 @@ function bindCalendarEvents() {
   calendarMonthsRoot.addEventListener("click", (event) => {
     const navButton = event.target.closest("[data-calendar-nav]");
     if (navButton) {
-      const practiceMonths = groupPracticesByMonth();
-      const activeIndex = practiceMonths.findIndex(({ key }) => key === selectedCalendarMonthKey);
-      const nextIndex = navButton.dataset.calendarNav === "prev"
-        ? activeIndex - 1
-        : activeIndex + 1;
-      const nextMonth = practiceMonths[nextIndex];
-
-      if (nextMonth) {
-        selectedCalendarMonthKey = nextMonth.key;
-        renderCalendar();
-      }
+      const direction = navButton.dataset.calendarNav === "prev" ? -1 : 1;
+      selectedCalendarMonthKey = shiftMonthKey(selectedCalendarMonthKey ?? getDefaultCalendarMonthKey(), direction);
+      renderCalendar();
       return;
     }
 
@@ -942,6 +948,60 @@ function bindCalendarEvents() {
     renderCalendar();
     renderCalendarEventDetail();
   });
+}
+
+function populatePracticeEditor(session) {
+  if (!practiceForm) {
+    return;
+  }
+
+  practiceForm.elements.eventId.value = session.id;
+  practiceForm.elements.type.value = normalizeEventType(session.type);
+  practiceForm.elements.date.value = session.date;
+  practiceForm.elements.time.value = session.time;
+  practiceForm.elements.otherLabel.value = session.customLabel || "";
+  syncPracticeFormFields();
+
+  if (practiceSaveButton) {
+    practiceSaveButton.textContent = "Save event";
+  }
+
+  cancelPracticeEditButton?.classList.remove("hidden");
+  practiceForm.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function clearPracticeEditor() {
+  if (!practiceForm) {
+    return;
+  }
+
+  practiceForm.reset();
+  practiceForm.elements.eventId.value = "";
+  practiceForm.elements.type.value = "rehearsal";
+  syncPracticeFormFields();
+
+  if (practiceSaveButton) {
+    practiceSaveButton.textContent = "Add";
+  }
+
+  cancelPracticeEditButton?.classList.add("hidden");
+}
+
+function deletePracticeEvent(eventId) {
+  state.practices = state.practices.filter((entry) => entry.id !== eventId);
+
+  if (selectedCalendarEventId === eventId) {
+    selectedCalendarEventId = null;
+  }
+
+  if (practiceForm?.elements.eventId.value === eventId) {
+    clearPracticeEditor();
+  }
+
+  void persist();
+  renderPractices();
+  renderCalendar();
+  renderCalendarEventDetail();
 }
 
 function renderStage() {
@@ -1638,6 +1698,8 @@ function renderAuthPanel() {
     return;
   }
 
+  authPanelRoot.classList.toggle("is-collapsed", !currentUser && authMode === "launcher");
+
   if (isInitializing) {
     authPanelRoot.innerHTML = `
       <div class="auth-header">
@@ -1679,6 +1741,7 @@ function renderAuthPanel() {
   }
 
   const isLogin = authMode === "login";
+  const isLauncher = authMode === "launcher";
   const feedbackMarkup = authMessage
     ? `<div class="auth-feedback is-${escapeHtml(authMessageType)}">${escapeHtml(authMessage)}</div>`
     : "";
@@ -1688,7 +1751,12 @@ function renderAuthPanel() {
 
   authPanelRoot.innerHTML = `
     ${feedbackMarkup}
-    ${isLogin ? `
+    ${isLauncher ? `
+      <div class="auth-launcher">
+        <button id="show-login" type="button" ${isAuthBusy ? "disabled" : ""}>Log in</button>
+        <button id="show-signup" type="button" class="secondary-button" ${isAuthBusy ? "disabled" : ""}>Sign up</button>
+      </div>
+    ` : isLogin ? `
       <form id="auth-login-form" class="auth-form auth-form-compact">
         <input
           type="email"
@@ -1736,6 +1804,11 @@ function renderAuthPanel() {
       <p class="auth-lock-note">${escapeHtml(setupCopy)}</p>
     `}
   `;
+
+  authPanelRoot.querySelector("#show-login")?.addEventListener("click", () => {
+    authMode = "login";
+    renderAuthPanel();
+  });
 
   authPanelRoot.querySelector("#show-signup")?.addEventListener("click", () => {
     authMode = "signup";
@@ -1883,7 +1956,7 @@ async function handleLogout() {
     }
 
     activateGuestMode({
-      authFeedback: ["You logged out. Log back in anytime to reach your cloud data.", "info"],
+      authFeedback: ["", "info"],
     });
   } catch (error) {
     console.error("Unable to log out", error);
