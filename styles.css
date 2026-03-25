@@ -1008,6 +1008,18 @@ button:hover {
   color: var(--muted);
 }
 
+.selected-card.empty-state,
+#dashboard-default-setlist.empty-state {
+  display: grid;
+  place-items: center;
+}
+
+.selected-card.empty-state p,
+#dashboard-default-setlist.empty-state p {
+  margin: 0;
+  max-width: 18rem;
+}
+
 .hidden {
   display: none;
 }
@@ -1100,6 +1112,55 @@ button:hover {
 }
 
 @media (max-width: 759px) {
+  .hero,
+  .dashboard,
+  .nav-strip {
+    width: calc(100% - 2rem);
+    max-width: 30rem;
+    margin-left: auto;
+    margin-right: auto;
+    padding-inline: 0;
+  }
+
+  .hero,
+  .dashboard {
+    justify-content: center;
+    justify-items: center;
+  }
+
+  .hero-brand,
+  .hero-copy {
+    width: 100%;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .hero-mascot,
+  .auth-shell,
+  .dashboard > .panel {
+    width: 100%;
+    justify-self: center;
+    margin-inline: auto;
+  }
+
+  body[data-page="dashboard"] .hero-copy h1,
+  body[data-page="setlists"] .hero-copy h1,
+  .eyebrow {
+    width: 100%;
+    text-align: center;
+  }
+
+  .panel {
+    width: 100%;
+  }
+
+  .panel > *,
+  .setlist-layout,
+  .setlist-tools,
+  #setlists.card-grid {
+    width: 100%;
+  }
+
   .setlist-primary-actions {
     grid-template-columns: 1fr;
   }

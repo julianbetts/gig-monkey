@@ -583,8 +583,10 @@ function renderDashboardDefaultSetlist() {
   dashboardDefaultSetlistRoot.innerHTML = "";
 
   if (!setlist) {
-    dashboardDefaultSetlistRoot.className = "selected-card empty-state";
-    dashboardDefaultSetlistRoot.innerHTML = "<p>No default setlist yet. Create one on the setlists page.</p>";
+    dashboardDefaultSetlistRoot.className = "selected-card item-card dashboard-card empty-state";
+    dashboardDefaultSetlistRoot.innerHTML = `
+      <p>No default setlist yet. Create one in Edit, then mark it as your default.</p>
+    `;
     if (dashboardPrintSetlistButton) {
       dashboardPrintSetlistButton.disabled = true;
     }
