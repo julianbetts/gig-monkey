@@ -10,11 +10,13 @@
 6. In Project Settings -> API, copy:
    - Project URL
    - Project API anon key
-7. Put those values into [`supabase-config.js`](/Users/julianbetts/Documents/gig-monkey/supabase-config.js).
+7. Put those values into [`supabase-config.local.js`](/Users/julianbetts/Documents/gig-monkey/supabase-config.local.js).
 
 ## Values to add locally
 
-Edit [`supabase-config.js`](/Users/julianbetts/Documents/gig-monkey/supabase-config.js):
+Keep [`supabase-config.js`](/Users/julianbetts/Documents/gig-monkey/supabase-config.js) as the committed placeholder.
+
+Create a local-only file named [`supabase-config.local.js`](/Users/julianbetts/Documents/gig-monkey/supabase-config.local.js):
 
 ```js
 window.GIG_MONKEY_SUPABASE_CONFIG = {
@@ -22,6 +24,8 @@ window.GIG_MONKEY_SUPABASE_CONFIG = {
   anonKey: "YOUR_SUPABASE_ANON_KEY",
 };
 ```
+
+[`supabase-config.local.js`](/Users/julianbetts/Documents/gig-monkey/supabase-config.local.js) is ignored by git so your project-specific values stay local.
 
 The anon key is expected to be public in a browser app. Data protection comes from Row Level Security, which is already included in the SQL.
 

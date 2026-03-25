@@ -212,14 +212,16 @@ async function activateAuthenticatedUser(user, options = {}) {
 
   try {
     const remoteState = await fetchRemoteState();
+    const pendingMigrationState = loadPendingMigrationState() ?? loadPreferredMigrationSource();
+    const shouldApplyMigration = pendingMigrationState && isWorkspaceEmpty(remoteState);
 
-    if (remoteState) {
+    if (remoteState && !shouldApplyMigration) {
       state = hydrateState(remoteState);
       clearPendingMigrationState();
       syncStatus = "saved";
       syncMessage = "Cloud sync is active.";
     } else {
-      const migrationState = loadPendingMigrationState() ?? loadPreferredMigrationSource();
+      const migrationState = pendingMigrationState;
       state = hydrateState(migrationState);
       await saveRemoteState(state);
       clearPendingMigrationState();
@@ -1483,6 +1485,20 @@ function loadPreferredMigrationSource() {
   return loadPendingMigrationState() ?? loadDeprecatedAccountStateSnapshot() ?? loadLegacyState();
 }
 
+function isWorkspaceEmpty(workspace) {
+  if (!workspace) {
+    return true;
+  }
+
+  return (
+    (!workspace.defaultSetlistId)
+    && (!Array.isArray(workspace.setlists) || workspace.setlists.length === 0)
+    && (!Array.isArray(workspace.gigNotes) || workspace.gigNotes.length === 0)
+    && (!Array.isArray(workspace.practices) || workspace.practices.length === 0)
+    && (!Array.isArray(workspace.stageItems) || workspace.stageItems.length === 0)
+  );
+}
+
 async function fetchRemoteState() {
   if (!supabaseClient || !currentUser) {
     return null;
@@ -1832,7 +1848,14 @@ async function handleSignup(event) {
     }
   } catch (error) {
     console.error("Unable to sign up", error);
-    setAuthMessage(error.message || "We couldn't create that account yet.", "error");
+    const message = String(error?.message || "");
+
+    if (message.toLowerCase().includes("email rate limit exceeded")) {
+      authMode = "login";
+      setAuthMessage("Too many signup emails were requested. Wait a bit, then log in with the test account you already created.", "error");
+    } else {
+      setAuthMessage(message || "We couldn't create that account yet.", "error");
+    }
   } finally {
     isAuthBusy = false;
     renderAuthPanel();
