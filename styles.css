@@ -64,7 +64,7 @@ body {
 }
 
 .hero {
-  padding: 3rem 0 2rem;
+  padding: 0 0 2rem;
   display: grid;
   gap: 1.5rem;
   align-items: end;
@@ -96,7 +96,7 @@ body {
 }
 
 .hero-mascot-secondary .hero-mascot-frame {
-  width: min(100%, 16rem);
+  width: min(100%, 12.5rem);
 }
 
 .interior-hero {
@@ -159,9 +159,27 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(4.6rem, 12vw, 8rem);
+  font-size: clamp(5rem, 12vw, 8rem);
   line-height: 0.88;
   text-shadow: 3px 3px 0 rgba(240, 188, 82, 0.85);
+}
+
+body[data-page="dashboard"] .hero-copy {
+  justify-items: center;
+  text-align: center;
+}
+
+body[data-page="setlists"] .hero-copy {
+  justify-items: center;
+  text-align: center;
+}
+
+body[data-page="dashboard"] .hero-copy h1 {
+  font-size: 6rem;
+}
+
+body[data-page="setlists"] .hero-copy h1 {
+  font-size: 6rem;
 }
 
 h2 {
@@ -209,6 +227,8 @@ button:disabled {
   display: grid;
   gap: 0.75rem;
   align-self: start;
+  justify-self: center;
+  width: min(100%, 21rem);
 }
 
 .auth-header {
@@ -1001,7 +1021,6 @@ button:hover {
 @media (min-width: 760px) {
   .hero {
     grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
-    padding-top: 4rem;
     align-items: end;
   }
 
@@ -1013,6 +1032,20 @@ button:hover {
   .hero-copy {
     display: grid;
     align-content: end;
+  }
+
+  body[data-page="dashboard"] .hero-copy {
+    justify-items: start;
+    text-align: left;
+  }
+
+  body[data-page="setlists"] .hero-copy {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .hero-mascot-secondary .hero-mascot-frame {
+    width: min(100%, 16rem);
   }
 
   .auth-shell {
