@@ -13,14 +13,7 @@ function createDefaultState() {
     profile: {
       displayName: "",
     },
-    setlists: [
-      {
-        id: crypto.randomUUID(),
-        name: "Warehouse Warm-Up",
-        date: "2026-03-26",
-        songs: ["Night Bus", "Static Hearts", "Alibi", "Last Exit"],
-      },
-    ],
+    setlists: [],
     gigNotes: [
       {
         id: crypto.randomUUID(),
@@ -133,7 +126,7 @@ async function initializeApp() {
 
     if (session?.user) {
       await activateAuthenticatedUser(session.user, {
-        successMessage: "Welcome back. Your cloud workspace is ready.",
+        successMessage: "Welcome back Rocker.",
         skipSuccessIfSameUser: true,
       });
     } else {
@@ -224,6 +217,9 @@ async function activateAuthenticatedUser(user, options = {}) {
       const migrationState = pendingMigrationState;
       state = hydrateState(migrationState);
       await saveRemoteState(state);
+      if (migrationState) {
+        clearGuestState();
+      }
       clearPendingMigrationState();
       syncStatus = "saved";
       syncMessage = migrationState
@@ -582,7 +578,10 @@ function renderDashboardDefaultSetlist() {
     return;
   }
 
-  dashboardDefaultSetlistRoot.className = "selected-card item-card dashboard-card";
+  const songCount = setlist.songs.length;
+  const densityClass = songCount > 12 ? " has-lots-of-songs" : songCount > 9 ? " has-many-songs" : "";
+
+  dashboardDefaultSetlistRoot.className = `selected-card item-card dashboard-card${densityClass}`;
   dashboardDefaultSetlistRoot.innerHTML = `
     <p class="meta">Default Setlist${setlist.date ? ` · ${formatDate(setlist.date)}` : ""}</p>
     <h3>${escapeHtml(setlist.name)}</h3>
@@ -1052,7 +1051,7 @@ function clearSetlistEditor() {
 
   setlistForm.reset();
   setlistForm.elements.setlistId.value = "";
-  saveSetlistButton.textContent = "Save setlist";
+  saveSetlistButton.textContent = "Save";
   cancelEditButton.classList.add("hidden");
   resetSongFields();
 }
@@ -1067,7 +1066,7 @@ function selectSetlist(id) {
   setlistForm.elements.setlistId.value = setlist.id;
   setlistForm.elements.name.value = setlist.name;
   setlistForm.elements.date.value = setlist.date || "";
-  saveSetlistButton.textContent = "Update setlist";
+  saveSetlistButton.textContent = "Save";
   cancelEditButton.classList.remove("hidden");
 
   songFields.innerHTML = "";
@@ -1451,11 +1450,15 @@ function loadDeprecatedAccountStateSnapshot() {
 }
 
 function loadGuestStateSnapshot() {
-  return loadLegacyState() ?? loadDeprecatedAccountStateSnapshot() ?? hydrateState(null);
+  return loadLegacyState() ?? hydrateState(null);
 }
 
 function persistGuestState(snapshot) {
   localStorage.setItem(legacyStorageKey, JSON.stringify(snapshot));
+}
+
+function clearGuestState() {
+  localStorage.removeItem(legacyStorageKey);
 }
 
 function loadPendingMigrationState() {
@@ -1778,7 +1781,7 @@ async function handleLogin(event) {
     }
 
     await activateAuthenticatedUser(user, {
-      successMessage: "Welcome back. Your saved data is ready.",
+      successMessage: "Welcome back Rocker.",
     });
   } catch (error) {
     console.error("Unable to log in", error);
